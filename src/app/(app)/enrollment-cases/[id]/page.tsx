@@ -635,6 +635,91 @@ export default async function EnrollmentCaseDetailPage({
         </div>
       </section>
 
+      <section className="tba-card mb-6 p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 className="text-lg font-semibold">Submission</h2>
+            <p className="mt-1 text-sm text-[#667085]">
+              Record actual payer submission evidence. The case advances to Submitted only when readiness rules allow it.
+            </p>
+          </div>
+          <span className={["rounded-full px-3 py-1 text-xs font-semibold", readiness?.ready ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"].join(" ")}>
+            {readiness?.ready ? "Ready" : "Blocked"}
+          </span>
+        </div>
+
+        <form action={recordCaseSubmission} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <input type="hidden" name="case_id" value={id} />
+
+          <div>
+            <label className="tba-label">Submission method</label>
+            <select name="submission_method" className="tba-input" defaultValue="mail" required>
+              <option value="secure_email">Secure email</option>
+              <option value="email">Email</option>
+              <option value="fax">Fax</option>
+              <option value="mail">Mail</option>
+              <option value="portal">Portal</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="tba-label">Submitted date/time</label>
+            <input name="submitted_at" type="datetime-local" className="tba-input" required />
+          </div>
+
+          <div>
+            <label className="tba-label">Recipient / destination</label>
+            <input name="recipient" className="tba-input" />
+          </div>
+
+          <div>
+            <label className="tba-label">Reference / tracking number</label>
+            <input name="reference_number" className="tba-input" />
+          </div>
+
+          <div className="md:col-span-2 xl:col-span-4">
+            <label className="tba-label">Submission notes</label>
+            <textarea name="notes" className="tba-input min-h-24" />
+          </div>
+
+          {!readiness?.ready ? (
+            <div className="md:col-span-2 xl:col-span-4">
+              <label className="tba-label">Admin override reason</label>
+              <textarea name="override_reason" className="tba-input min-h-20" />
+            </div>
+          ) : null}
+
+          <div className="md:col-span-2 xl:col-span-4">
+            <SubmitButton idleLabel="Record submission + mark Submitted" pendingLabel="Recording submission..." />
+          </div>
+        </form>
+
+        <div className="mt-6 border-t border-[#eaecf0] pt-5">
+          <h3 className="font-semibold">Submission history</h3>
+          <div className="mt-3 grid gap-3">
+            {(submissions ?? []).length ? submissions!.map((submission) => (
+              <div key={submission.id} className="rounded-xl border border-[#eaecf0] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Submission #{submission.sequence_number}</p>
+                    <p className="mt-1 text-xs capitalize text-[#667085]">
+                      {submission.submission_method.replaceAll("_", " ")} · {fmt(submission.submitted_at)}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs font-semibold capitalize text-[#475467]">
+                    {submission.status.replaceAll("_", " ")}
+                  </span>
+                </div>
+                {submission.recipient ? <p className="mt-2 text-sm text-[#667085]">Recipient: {submission.recipient}</p> : null}
+                {submission.reference_number ? <p className="mt-1 text-sm text-[#667085]">Reference: {submission.reference_number}</p> : null}
+                {submission.notes ? <p className="mt-2 whitespace-pre-wrap text-sm text-[#667085]">{submission.notes}</p> : null}
+              </div>
+            )) : <p className="text-sm text-[#667085]">No submission has been recorded yet.</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="tba-card p-6">
         <h2 className="text-lg font-semibold">Timeline</h2>
         <div className="mt-5 grid gap-4">
