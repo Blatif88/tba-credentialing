@@ -31,25 +31,18 @@ function casePath(caseId: string) {
 }
 
 export async function updateCaseStatus(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const statusCode = value(formData, "status_code");
+  const overrideReason = value(formData, "override_reason");
 
   if (!caseId || !statusCode) throw new Error("Case and status are required.");
 
-  const updates: Record<string, unknown> = {
-    status_code: statusCode,
-    updated_by: user.id,
-  };
-
-  const now = new Date().toISOString();
-  if (statusCode === "submitted") updates.submitted_at = now;
-  if (statusCode === "credentialing_approved") updates.approved_at = now;
-
-  const { error } = await supabase
-    .from("enrollment_cases")
-    .update(updates)
-    .eq("id", caseId);
+  const { error } = await supabase.rpc("transition_enrollment_case_status", {
+    p_case_id: caseId,
+    p_status_code: statusCode,
+    p_override_reason: overrideReason || null,
+  });
 
   if (error) throw new Error(error.message);
 
