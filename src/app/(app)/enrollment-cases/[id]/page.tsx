@@ -14,7 +14,7 @@ import {
   updateWorkflowStep,
 } from "@/lib/actions/cases";
 import { createClient } from "@/lib/supabase/server";
-import { uploadDocumentForRequirement } from "@/lib/actions/documents";
+import { DocumentUploadForm } from "@/components/documents/document-upload-form";
 
 function fmt(value: string | null | undefined) {
   if (!value) return "—";
@@ -347,42 +347,24 @@ export default async function EnrollmentCaseDetailPage({
 
                     <div className="mt-4 border-t border-[#eaecf0] pt-4">
                       <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Or upload a new document</p>
-                      <form
-                        action={uploadDocumentForRequirement}
-                        className="mt-3 grid gap-2 sm:grid-cols-2"
-                      >
-                        <input type="hidden" name="case_id" value={id} />
-                        <input type="hidden" name="requirement_id" value={req.id} />
-
-                        <select name="document_type_id" className="tba-input !py-2" defaultValue="" required>
-                          <option value="" disabled>Select document type</option>
-                          {(documentTypes ?? []).map((type: any) => (
-                            <option key={type.id} value={type.id}>{type.name}</option>
-                          ))}
-                        </select>
-
-                        <input
-                          name="title"
-                          className="tba-input !py-2"
-                          defaultValue={req.title}
-                          required
+                      <div className="mt-3">
+                        <DocumentUploadForm
+                          tenantId={caseRow.tenant_id}
+                          clients={[]}
+                          providers={[]}
+                          organizations={[]}
+                          documentTypes={(documentTypes ?? []).map((type: any) => ({
+                            id: type.id,
+                            name: type.name,
+                          }))}
+                          fixedClientId={project?.client_id ?? null}
+                          fixedProviderId={caseRow.provider_id}
+                          fixedOrganizationId={caseRow.organization_id}
+                          caseId={id}
+                          requirementId={req.id}
+                          defaultTitle={req.title}
                         />
-
-                        <input name="issued_date" type="date" className="tba-input !py-2" />
-                        <input name="expiration_date" type="date" className="tba-input !py-2" />
-
-                        <input
-                          name="file"
-                          type="file"
-                          className="tba-input sm:col-span-2"
-                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
-                          required
-                        />
-
-                        <div className="sm:col-span-2">
-                          <SubmitButton idleLabel="Upload + attach" pendingLabel="Uploading..." />
-                        </div>
-                      </form>
+                      </div>
                     </div>
                   </div>
                 ) : null}
