@@ -181,3 +181,30 @@ export async function updateTenantRuleDraft(formData: FormData) {
 
   revalidatePath(programPath(offeringId));
 }
+
+
+export async function reviewKnowledgeSource(formData: FormData) {
+  const { supabase } = await adminContext();
+  const sourceId = value(formData, "source_id");
+  const outcome = value(formData, "outcome");
+  const summary = value(formData, "summary");
+  const reviewedUrl = value(formData, "reviewed_url");
+  const createProposals = formData.get("create_proposals") === "on";
+
+  if (!sourceId || !outcome || !summary) {
+    throw new Error("Source, review outcome, and summary are required.");
+  }
+
+  const { error } = await supabase.rpc("review_knowledge_source", {
+    p_source_id: sourceId,
+    p_outcome: outcome,
+    p_summary: summary,
+    p_reviewed_url: reviewedUrl || null,
+    p_create_proposals: createProposals,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/knowledge-review");
+  revalidatePath("/payer-programs");
+}
