@@ -122,6 +122,8 @@ export async function updateProviderRecord(formData: FormData) {
     credential: value(formData, "credential") || null,
     individual_npi: npi || null,
     caqh_id: value(formData, "caqh_id") || null,
+    provider_type_id: value(formData, "provider_type_id") || null,
+    primary_specialty_id: value(formData, "primary_specialty_id") || null,
     updated_by: user.id,
   }).eq("id", id);
 
