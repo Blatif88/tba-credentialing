@@ -9,13 +9,15 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: provider }, { data: clients }] = await Promise.all([
+  const [{ data: provider }, { data: clients }, { data: providerTypes }, { data: specialties }] = await Promise.all([
     supabase
       .from("providers")
-      .select("id,client_id,first_name,middle_name,last_name,suffix,credential,individual_npi,caqh_id,status,credentialing_readiness_percent,nppes_verification_status,nppes_last_verified_at,nppes_last_snapshot_id")
+      .select("id,client_id,first_name,middle_name,last_name,suffix,credential,individual_npi,caqh_id,provider_type_id,primary_specialty_id,status,credentialing_readiness_percent,nppes_verification_status,nppes_last_verified_at,nppes_last_snapshot_id")
       .eq("id", id)
       .single(),
     supabase.from("clients").select("id,name").is("archived_at", null).order("name"),
+    supabase.from("provider_types").select("id,name,code").eq("active", true).eq("subject_type", "individual").order("name"),
+    supabase.from("specialties").select("id,name,code").eq("active", true).order("name"),
   ]);
 
   if (!provider) notFound();
@@ -108,6 +110,24 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
           <div>
             <label className="tba-label">CAQH ID</label>
             <input name="caqh_id" className="tba-input" defaultValue={provider.caqh_id ?? ""} />
+          </div>
+          <div>
+            <label className="tba-label">Provider type</label>
+            <select name="provider_type_id" className="tba-input" defaultValue={provider.provider_type_id ?? ""}>
+              <option value="">Not set</option>
+              {(providerTypes ?? []).map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="tba-label">Primary specialty</label>
+            <select name="primary_specialty_id" className="tba-input" defaultValue={provider.primary_specialty_id ?? ""}>
+              <option value="">Not set</option>
+              {(specialties ?? []).map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
           </div>
           <div className="md:col-span-2 xl:col-span-4">
             <SubmitButton idleLabel="Save provider" pendingLabel="Saving provider..." />
