@@ -7,6 +7,7 @@ import {
   completeFollowup,
   createCaseTask,
   generateCaseRequirements,
+  recordCaseSubmission,
   scheduleFollowup,
   updateCaseStatus,
   updateRequirementStatus,
@@ -53,6 +54,7 @@ export default async function EnrollmentCaseDetailPage({
     { data: documents },
     { data: documentTypes },
     { data: documentLinks },
+    { data: submissions },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -88,6 +90,11 @@ export default async function EnrollmentCaseDetailPage({
       .select("id,linked_id,document_id,documents(id,title,status,expiration_date,external_file_id,storage_connections(provider),document_types(name,code))")
       .eq("linked_type", "case_requirement")
       .eq("status", "active"),
+    supabase
+      .from("case_submissions")
+      .select("id,sequence_number,submission_method,submitted_at,recipient,reference_number,notes,status")
+      .eq("case_id", id)
+      .order("sequence_number", { ascending: false }),
   ]);
 
   const workflow = workflows?.[0] as any;
