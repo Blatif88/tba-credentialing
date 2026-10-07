@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import { createCredentialingProject } from "@/lib/actions/intake";
@@ -192,12 +193,16 @@ export default async function ProjectsPage() {
           <span>Project</span><span>Client</span><span>Status</span><span>Target</span>
         </div>
         {(projects ?? []).length ? projects!.map((project: any) => (
-          <div key={project.id} className="grid grid-cols-[1.5fr_1.2fr_1fr_1fr] border-b border-[#f2f4f7] px-5 py-4 text-sm last:border-0">
-            <span className="font-medium text-[#101828]">{project.name}</span>
+          <Link
+            key={project.id}
+            href={"/projects/" + project.id}
+            className="grid grid-cols-[1.5fr_1.2fr_1fr_1fr] border-b border-[#f2f4f7] px-5 py-4 text-sm transition last:border-0 hover:bg-[#f9fafb]"
+          >
+            <span className="font-medium text-[#175cd3] underline-offset-2 hover:underline">{project.name}</span>
             <span className="text-[#475467]">{project.clients?.name ?? "—"}</span>
             <span className="capitalize text-[#475467]">{project.status}</span>
             <span className="text-[#667085]">{project.target_date ?? "—"}</span>
-          </div>
+          </Link>
         )) : (
           <div className="px-5 py-10 text-center text-sm text-[#667085]">No projects created yet.</div>
         )}
