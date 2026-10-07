@@ -168,6 +168,34 @@ export default async function EnrollmentCaseDetailPage({
     }>;
   } | null;
 
+  const { data: activationReadinessData } = await supabase.rpc("case_activation_readiness", {
+    p_case_id: id,
+  });
+
+  const activationReadiness = activationReadinessData as {
+    ready_for_operational_completion?: boolean;
+    blocker_count?: number;
+    blockers?: Array<{ code?: string; title?: string }>;
+    gates?: {
+      credentialing_approved?: boolean;
+      effective_date_confirmed?: boolean;
+      payer_loaded?: boolean;
+      directory_verified?: boolean;
+      claims_test_passed?: boolean;
+      no_open_deficiencies?: boolean;
+    };
+    contract?: {
+      tracked?: boolean;
+      latest_status?: string | null;
+      satisfied?: boolean;
+    };
+    optional_activation?: {
+      era_complete?: boolean;
+      eft_complete?: boolean;
+      edi_complete?: boolean;
+    };
+  } | null;
+
   const linksByRequirement = new Map<string, any[]>();
   for (const link of documentLinks ?? []) {
     const items = linksByRequirement.get(link.linked_id) ?? [];
@@ -776,7 +804,9 @@ export default async function EnrollmentCaseDetailPage({
                 <option value="era_complete">ERA complete</option>
                 <option value="eft_complete">EFT complete</option>
                 <option value="edi_complete">EDI complete</option>
-                <option value="operational_complete">Operational complete</option>
+                {activationReadiness?.ready_for_operational_completion ? (
+                  <option value="operational_complete">Operational complete</option>
+                ) : null}
               </select>
             </div>
 
@@ -932,6 +962,78 @@ export default async function EnrollmentCaseDetailPage({
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="tba-card mb-6 p-6">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div>
+            <h2 className="text-lg font-semibold">Activation readiness</h2>
+            <p className="mt-1 text-sm text-[#667085]">
+              Final evidence gates required before this case can be marked operationally complete.
+            </p>
+          </div>
+          <span className={["rounded-full px-3 py-1 text-xs font-semibold", activationReadiness?.ready_for_operational_completion ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"].join(" ")}>
+            {activationReadiness?.ready_for_operational_completion ? "Operationally ready" : (activationReadiness?.blocker_count ?? 0) + " blocker(s)"}
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[
+            ["Credentialing approved", activationReadiness?.gates?.credentialing_approved],
+            ["Effective date confirmed", activationReadiness?.gates?.effective_date_confirmed],
+            ["Payer loaded", activationReadiness?.gates?.payer_loaded],
+            ["Directory verified", activationReadiness?.gates?.directory_verified],
+            ["Claims test passed", activationReadiness?.gates?.claims_test_passed],
+            ["No open deficiencies", activationReadiness?.gates?.no_open_deficiencies],
+          ].map(([label, complete]) => (
+            <div
+              key={String(label)}
+              className={["rounded-xl border px-4 py-3 text-sm", complete ? "border-emerald-200 bg-emerald-50" : "border-[#eaecf0] bg-[#f9fafb]"].join(" ")}
+            >
+              <p className="font-medium text-[#101828]">{complete ? "✓ " : "○ "}{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-[#eaecf0] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Contracting</p>
+            <p className="mt-2 text-sm text-[#344054]">
+              {activationReadiness?.contract?.tracked
+                ? "Latest status: " + (activationReadiness.contract.latest_status ?? "unknown").replaceAll("_", " ")
+                : "No contract record yet."}
+            </p>
+            <p className="mt-1 text-xs text-[#667085]">
+              Contracting is tracked separately because some payer programs may not require a contract.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-[#eaecf0] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Optional activation</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
+                ERA {activationReadiness?.optional_activation?.era_complete ? "complete" : "pending"}
+              </span>
+              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
+                EFT {activationReadiness?.optional_activation?.eft_complete ? "complete" : "pending"}
+              </span>
+              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
+                EDI {activationReadiness?.optional_activation?.edi_complete ? "complete" : "pending"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {!activationReadiness?.ready_for_operational_completion && (activationReadiness?.blockers ?? []).length ? (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Remaining activation blockers</p>
+            <ul className="mt-2 grid gap-2 text-sm text-amber-900">
+              {(activationReadiness?.blockers ?? []).map((blocker, index) => (
+                <li key={(blocker.code ?? "blocker") + "-" + index}>{blocker.title ?? blocker.code}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="mb-6 grid gap-6 xl:grid-cols-3">
