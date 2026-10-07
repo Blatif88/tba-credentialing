@@ -577,3 +577,99 @@ export async function updateCaseDeficiency(formData: FormData) {
   revalidatePath(casePath(caseId));
   revalidatePath("/enrollment-cases");
 }
+
+
+export async function createCaseContract(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const caseId = value(formData, "case_id");
+  const contractName = value(formData, "contract_name");
+  const status = value(formData, "status") || "pending";
+
+  if (!caseId || !contractName) {
+    throw new Error("Case and contract name are required.");
+  }
+
+  const { error } = await supabase.from("case_contracts").insert({
+    tenant_id: tenantId,
+    case_id: caseId,
+    contract_name: contractName,
+    status,
+    received_at: value(formData, "received_at") ? new Date(value(formData, "received_at")).toISOString() : null,
+    sent_for_signature_at: value(formData, "sent_for_signature_at") ? new Date(value(formData, "sent_for_signature_at")).toISOString() : null,
+    executed_at: value(formData, "executed_at") ? new Date(value(formData, "executed_at")).toISOString() : null,
+    effective_date: value(formData, "effective_date") || null,
+    reference_number: value(formData, "reference_number") || null,
+    notes: value(formData, "notes") || null,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
+}
+
+export async function recordDirectoryVerification(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const caseId = value(formData, "case_id");
+  const outcome = value(formData, "outcome");
+  const verifiedAt = value(formData, "verified_at");
+
+  if (!caseId || !outcome || !verifiedAt) {
+    throw new Error("Case, outcome, and verified date/time are required.");
+  }
+
+  const checked = (key: string) => formData.get(key) === "on";
+
+  const { error } = await supabase.from("case_directory_verifications").insert({
+    tenant_id: tenantId,
+    case_id: caseId,
+    verified_at: new Date(verifiedAt).toISOString(),
+    directory_url: value(formData, "directory_url") || null,
+    listing_found: checked("listing_found"),
+    name_correct: checked("name_correct"),
+    location_correct: checked("location_correct"),
+    specialty_correct: checked("specialty_correct"),
+    network_correct: checked("network_correct"),
+    outcome,
+    notes: value(formData, "notes") || null,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
+}
+
+export async function recordClaimTest(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const caseId = value(formData, "case_id");
+  const testType = value(formData, "test_type");
+  const outcome = value(formData, "outcome");
+  const submittedAt = value(formData, "submitted_at");
+  const responseAt = value(formData, "response_at");
+
+  if (!caseId || !testType || !outcome || !submittedAt) {
+    throw new Error("Case, test type, outcome, and submitted date/time are required.");
+  }
+
+  const { error } = await supabase.from("case_claim_tests").insert({
+    tenant_id: tenantId,
+    case_id: caseId,
+    test_type: testType,
+    submitted_at: new Date(submittedAt).toISOString(),
+    response_at: responseAt ? new Date(responseAt).toISOString() : null,
+    outcome,
+    payer_reference: value(formData, "payer_reference") || null,
+    clearinghouse_reference: value(formData, "clearinghouse_reference") || null,
+    response_code: value(formData, "response_code") || null,
+    notes: value(formData, "notes") || null,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
+}
