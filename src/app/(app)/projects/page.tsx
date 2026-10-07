@@ -12,7 +12,7 @@ export default async function ProjectsPage() {
     { data: providers },
     { data: organizations },
     { data: locations },
-    { data: payers },
+    { data: payerOfferings },
   ] = await Promise.all([
     supabase
       .from("credentialing_projects")
@@ -23,32 +23,33 @@ export default async function ProjectsPage() {
     supabase.from("providers").select("id,first_name,last_name,credential").is("archived_at", null).order("last_name"),
     supabase.from("organizations").select("id,legal_name").is("archived_at", null).order("legal_name"),
     supabase.from("locations").select("id,name,address_line_1,city,state").is("archived_at", null).order("created_at", { ascending: false }),
-    supabase.from("payer_organizations").select("id,display_name").eq("status", "active").order("display_name"),
+    supabase
+      .from("payer_offerings")
+      .select("id,name,state,program_name,external_code,payer_organizations(display_name)")
+      .eq("status", "active")
+      .order("state", { ascending: true, nullsFirst: true }),
   ]);
-
-  const hasPayers = (payers ?? []).length > 0;
 
   return (
     <>
       <PageHeader
         eyebrow="Credentialing intake"
         title="Projects"
-        description="Create a credentialing project, attach the subject and location, then add payer targets when the verified payer catalog is available."
+        description="Create a project and generate its first enrollment case against a verified payer program."
       />
 
-      {!hasPayers ? (
-        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-          <strong>Payer case generation is intentionally paused.</strong> The payer master currently has no verified payer records, so this screen creates the project scope only. We will enable payer selection and enrollment-case generation after the payer catalog is seeded from verified sources.
-        </div>
-      ) : null}
-
       <section className="tba-card mb-6 p-6">
-        <h2 className="text-lg font-semibold">Create project</h2>
+        <h2 className="text-lg font-semibold">Create credentialing case</h2>
+        <p className="mt-1 text-sm text-[#667085]">
+          This creates the project, payer target, enrollment case, case location, and 18-step standard workflow in one transaction.
+        </p>
+
         <form action={createCredentialingProject} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="xl:col-span-2">
             <label className="tba-label">Project name</label>
-            <input name="name" className="tba-input" placeholder="ABC Medical - Initial Credentialing" required />
+            <input name="name" className="tba-input" placeholder="ABC Medical - Texas Medicaid Enrollment" required />
           </div>
+
           <div>
             <label className="tba-label">Client</label>
             <select name="client_id" className="tba-input" defaultValue="" required>
@@ -56,6 +57,7 @@ export default async function ProjectsPage() {
               {(clients ?? []).map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
             </select>
           </div>
+
           <div>
             <label className="tba-label">Provider</label>
             <select name="provider_id" className="tba-input" defaultValue="">
@@ -67,6 +69,7 @@ export default async function ProjectsPage() {
               ))}
             </select>
           </div>
+
           <div>
             <label className="tba-label">Organization</label>
             <select name="organization_id" className="tba-input" defaultValue="">
@@ -74,6 +77,7 @@ export default async function ProjectsPage() {
               {(organizations ?? []).map((organization) => <option key={organization.id} value={organization.id}>{organization.legal_name}</option>)}
             </select>
           </div>
+
           <div>
             <label className="tba-label">Location</label>
             <select name="location_id" className="tba-input" defaultValue="">
@@ -85,16 +89,70 @@ export default async function ProjectsPage() {
               ))}
             </select>
           </div>
+
+          <div className="xl:col-span-2">
+            <label className="tba-label">Verified payer program</label>
+            <select name="payer_offering_id" className="tba-input" defaultValue="" required>
+              <option value="" disabled>Select payer program</option>
+              {(payerOfferings ?? []).map((offering: any) => (
+                <option key={offering.id} value={offering.id}>
+                  {offering.payer_organizations?.display_name ?? "Payer"} — {offering.name}
+                  {offering.state ? ` (${offering.state})` : " (Federal)"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="tba-label">State</label>
+            <select name="state" className="tba-input" defaultValue="TX" required>
+              {["TX","CA","NV","NY","NJ","CO"].map((state) => <option key={state} value={state}>{state}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="tba-label">Enrollment type</label>
+            <select name="enrollment_type" className="tba-input" defaultValue="initial">
+              <option value="initial">Initial enrollment</option>
+              <option value="revalidation">Revalidation</option>
+              <option value="change_of_information">Change of information</option>
+              <option value="recredentialing">Recredentialing</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="tba-label">Enrollment relationship</label>
+            <select name="entity_context" className="tba-input" defaultValue="individual">
+              <option value="individual">Individual</option>
+              <option value="under_existing_group">Under existing group</option>
+              <option value="group">Group</option>
+              <option value="organization">Organization</option>
+              <option value="facility">Facility</option>
+              <option value="supplier">Supplier</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="tba-label">Network intent</label>
+            <select name="network_intent" className="tba-input" defaultValue="in_network">
+              <option value="in_network">In network</option>
+              <option value="out_of_network">Out of network</option>
+              <option value="either">Either</option>
+            </select>
+          </div>
+
           <div>
             <label className="tba-label">Start date</label>
             <input name="start_date" type="date" className="tba-input" />
           </div>
+
           <div>
             <label className="tba-label">Target date</label>
             <input name="target_date" type="date" className="tba-input" />
           </div>
+
           <div className="md:col-span-2 xl:col-span-4">
-            <SubmitButton idleLabel="Create draft project" pendingLabel="Creating project..." />
+            <SubmitButton idleLabel="Create project + enrollment case" pendingLabel="Creating case..." disabled={!(payerOfferings ?? []).length} />
           </div>
         </form>
       </section>
