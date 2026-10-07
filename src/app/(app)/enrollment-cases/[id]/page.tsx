@@ -771,11 +771,8 @@ export default async function EnrollmentCaseDetailPage({
               <select name="milestone_code" className="tba-input" defaultValue="submission_confirmation" required>
                 <option value="submission_confirmation">Submission confirmation</option>
                 <option value="credentialing_approval">Credentialing approval</option>
-                <option value="contract_executed">Contract executed</option>
                 <option value="effective_date">Effective date</option>
                 <option value="payer_loaded">Payer loaded</option>
-                <option value="directory_verified">Directory verified</option>
-                <option value="claims_test">Claims test</option>
                 <option value="era_complete">ERA complete</option>
                 <option value="eft_complete">EFT complete</option>
                 <option value="edi_complete">EDI complete</option>
