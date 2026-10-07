@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { registerUploadedDocument } from "@/lib/actions/documents";
@@ -38,7 +38,7 @@ export function DocumentUploadForm({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
 
@@ -57,9 +57,10 @@ export function DocumentUploadForm({
       }
 
       const clientId = fixedClientId ?? String(form.get("client_id") || "");
-      const providerId = fixedProviderId ?? String(form.get("provider_id") || "") || null;
+      const providerId =
+        fixedProviderId ?? (String(form.get("provider_id") || "") || null);
       const organizationId =
-        fixedOrganizationId ?? String(form.get("organization_id") || "") || null;
+        fixedOrganizationId ?? (String(form.get("organization_id") || "") || null);
       const documentTypeId = String(form.get("document_type_id") || "");
       const title = String(form.get("title") || "").trim();
 
