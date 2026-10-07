@@ -5,8 +5,10 @@ import {
   addCaseNote,
   completeFollowup,
   createCaseTask,
+  generateCaseRequirements,
   scheduleFollowup,
   updateCaseStatus,
+  updateRequirementStatus,
   updateTaskStatus,
   updateWorkflowStep,
 } from "@/lib/actions/cases";
@@ -47,7 +49,7 @@ export default async function EnrollmentCaseDetailPage({
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
-    supabase.from("case_requirements").select("id,requirement_type,title,description,required,status,sequence").eq("case_id", id).order("sequence"),
+    supabase.from("case_requirements").select("id,requirement_type,title,description,required,status,sequence,source_reason,knowledge_sources(title,url,last_verified_at)").eq("case_id", id).order("sequence"),
     supabase.from("tasks").select("id,title,description,priority,status,due_at,completed_at").eq("case_id", id).order("created_at", { ascending: false }),
     supabase.from("followups").select("id,sequence_number,scheduled_at,completed_at,method,outcome,notes,next_followup_at,escalation_level").eq("case_id", id).order("sequence_number", { ascending: false }),
     supabase.from("notes").select("id,category,body,created_at").eq("subject_type", "case").eq("subject_id", id).order("created_at", { ascending: false }),
@@ -195,18 +197,95 @@ export default async function EnrollmentCaseDetailPage({
 
       <section className="mb-6 grid gap-6 xl:grid-cols-2">
         <div className="tba-card p-6">
-          <h2 className="text-lg font-semibold">Requirements</h2>
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div>
+              <h2 className="text-lg font-semibold">Requirements</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Generated from approved knowledge rules and preserved across refreshes.
+              </p>
+            </div>
+            <form action={generateCaseRequirements}>
+              <input type="hidden" name="case_id" value={id} />
+              <SubmitButton
+                idleLabel={(requirements ?? []).length ? "Refresh requirements" : "Generate requirements"}
+                pendingLabel="Evaluating rules..."
+              />
+            </form>
+          </div>
+
           <div className="mt-4 divide-y divide-[#f2f4f7]">
-            {(requirements ?? []).length ? requirements!.map((req) => (
-              <div key={req.id} className="py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-[#101828]">{req.title}</span>
-                  <span className="text-xs font-semibold capitalize text-[#475467]">{req.status.replaceAll("_", " ")}</span>
+            {(requirements ?? []).length ? requirements!.map((req: any) => (
+              <div key={req.id} className="py-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <span className="font-medium text-[#101828]">{req.title}</span>
+                    <p className="mt-1 text-xs capitalize text-[#667085]">
+                      {req.requirement_type.replaceAll("_", " ")}
+                      {req.required ? " · required" : " · optional"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#f2f4f7] px-2.5 py-1 text-xs font-semibold capitalize text-[#475467]">
+                    {req.status.replaceAll("_", " ")}
+                  </span>
                 </div>
-                <p className="mt-1 text-xs capitalize text-[#667085]">{req.requirement_type.replaceAll("_", " ")}{req.required ? " · required" : " · optional"}</p>
+
                 {req.description ? <p className="mt-2 text-sm text-[#667085]">{req.description}</p> : null}
+
+                {req.source_reason ? (
+                  <p className="mt-3 text-xs text-[#667085]">{req.source_reason}</p>
+                ) : null}
+
+                {req.knowledge_sources ? (
+                  <div className="mt-2 text-xs text-[#475467]">
+                    <span className="font-semibold">Source:</span>{" "}
+                    {req.knowledge_sources.url ? (
+                      <a
+                        href={req.knowledge_sources.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#175cd3] underline"
+                      >
+                        {req.knowledge_sources.title}
+                      </a>
+                    ) : (
+                      req.knowledge_sources.title
+                    )}
+                    {req.knowledge_sources.last_verified_at
+                      ? " · verified " + new Date(req.knowledge_sources.last_verified_at).toLocaleDateString()
+                      : ""}
+                  </div>
+                ) : null}
+
+                <form action={updateRequirementStatus} className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                  <input type="hidden" name="case_id" value={id} />
+                  <input type="hidden" name="requirement_id" value={req.id} />
+                  <select name="status" className="tba-input !py-2" defaultValue={req.status}>
+                    <option value="needed">Needed</option>
+                    <option value="requested">Requested</option>
+                    <option value="received">Received</option>
+                    <option value="verified">Verified</option>
+                    <option value="completed">Completed</option>
+                    <option value="waived">Waived</option>
+                    <option value="not_applicable">Not applicable</option>
+                  </select>
+                  <input
+                    name="waiver_reason"
+                    className="tba-input !py-2"
+                    placeholder="Waiver reason if waived"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]"
+                  >
+                    Save
+                  </button>
+                </form>
               </div>
-            )) : <div className="py-8 text-center text-sm text-[#667085]">No case-specific requirements have been generated yet.</div>}
+            )) : (
+              <div className="py-8 text-center text-sm text-[#667085]">
+                No requirements yet. Run the rules engine to generate them.
+              </div>
+            )}
           </div>
         </div>
 
