@@ -785,7 +785,7 @@ export default async function EnrollmentCaseDetailPage({
       </section>
 
       <section className="mb-6 grid gap-6 xl:grid-cols-2">
-        <div className="tba-card p-6">
+        <div id="post-submission-milestones" className="tba-card scroll-mt-6 p-6">
           <h2 className="text-lg font-semibold">Post-submission milestones</h2>
           <p className="mt-1 text-sm text-[#667085]">
             Record payer confirmation, approval, effective date, loading, directory verification, claims testing, and activation milestones.
@@ -878,7 +878,7 @@ export default async function EnrollmentCaseDetailPage({
           </div>
         </div>
 
-        <div className="tba-card p-6">
+        <div id="deficiencies" className="tba-card scroll-mt-6 p-6">
           <h2 className="text-lg font-semibold">Deficiencies / additional information</h2>
           <p className="mt-1 text-sm text-[#667085]">
             Track payer requests, response submission, and resolution without losing the original request history.
@@ -977,20 +977,63 @@ export default async function EnrollmentCaseDetailPage({
           </span>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <p className="mt-4 text-xs text-[#667085]">
+          These are evidence-backed status indicators, not manual checkboxes. Use the action on an incomplete gate to record the evidence that completes it.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[
-            ["Credentialing approved", activationReadiness?.gates?.credentialing_approved],
-            ["Effective date confirmed", activationReadiness?.gates?.effective_date_confirmed],
-            ["Payer loaded", activationReadiness?.gates?.payer_loaded],
-            ["Directory verified", activationReadiness?.gates?.directory_verified],
-            ["Claims test passed", activationReadiness?.gates?.claims_test_passed],
-            ["No open deficiencies", activationReadiness?.gates?.no_open_deficiencies],
-          ].map(([label, complete]) => (
+            {
+              label: "Credentialing approved",
+              complete: activationReadiness?.gates?.credentialing_approved,
+              href: "#post-submission-milestones",
+              action: "Record approval",
+            },
+            {
+              label: "Effective date confirmed",
+              complete: activationReadiness?.gates?.effective_date_confirmed,
+              href: "#post-submission-milestones",
+              action: "Record effective date",
+            },
+            {
+              label: "Payer loaded",
+              complete: activationReadiness?.gates?.payer_loaded,
+              href: "#post-submission-milestones",
+              action: "Record payer loading",
+            },
+            {
+              label: "Directory verified",
+              complete: activationReadiness?.gates?.directory_verified,
+              href: "#directory-verification",
+              action: "Verify directory",
+            },
+            {
+              label: "Claims test passed",
+              complete: activationReadiness?.gates?.claims_test_passed,
+              href: "#claims-testing",
+              action: "Record claims test",
+            },
+            {
+              label: "No open deficiencies",
+              complete: activationReadiness?.gates?.no_open_deficiencies,
+              href: "#deficiencies",
+              action: "Review deficiencies",
+            },
+          ].map((gate) => (
             <div
-              key={String(label)}
-              className={["rounded-xl border px-4 py-3 text-sm", complete ? "border-emerald-200 bg-emerald-50" : "border-[#eaecf0] bg-[#f9fafb]"].join(" ")}
+              key={gate.label}
+              className={["rounded-xl border px-4 py-3 text-sm", gate.complete ? "border-emerald-200 bg-emerald-50" : "border-[#eaecf0] bg-[#f9fafb]"].join(" ")}
             >
-              <p className="font-medium text-[#101828]">{complete ? "✓ " : "○ "}{label}</p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="font-medium text-[#101828]">{gate.complete ? "✓ " : "○ "}{gate.label}</p>
+                {gate.complete ? (
+                  <span className="text-xs font-semibold text-emerald-700">Complete</span>
+                ) : (
+                  <a href={gate.href} className="text-xs font-semibold text-[#175cd3] underline underline-offset-2">
+                    {gate.action}
+                  </a>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -1082,7 +1125,7 @@ export default async function EnrollmentCaseDetailPage({
           </div>
         </div>
 
-        <div className="tba-card p-6">
+        <div id="directory-verification" className="tba-card scroll-mt-6 p-6">
           <h2 className="text-lg font-semibold">Directory verification</h2>
           <p className="mt-1 text-sm text-[#667085]">
             Verify the payer directory listing before claims testing.
@@ -1135,7 +1178,7 @@ export default async function EnrollmentCaseDetailPage({
           </div>
         </div>
 
-        <div className="tba-card p-6">
+        <div id="claims-testing" className="tba-card scroll-mt-6 p-6">
           <h2 className="text-lg font-semibold">Claims testing</h2>
           <p className="mt-1 text-sm text-[#667085]">
             Record the first billing/claims connectivity test and payer response.
