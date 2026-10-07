@@ -14,6 +14,7 @@ import {
   updateWorkflowStep,
 } from "@/lib/actions/cases";
 import { createClient } from "@/lib/supabase/server";
+import { uploadDocumentForRequirement } from "@/lib/actions/documents";
 
 function fmt(value: string | null | undefined) {
   if (!value) return "—";
@@ -49,6 +50,7 @@ export default async function EnrollmentCaseDetailPage({
     { data: locations },
     { data: portals },
     { data: documents },
+    { data: documentTypes },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -74,6 +76,11 @@ export default async function EnrollmentCaseDetailPage({
           .eq("status", "active")
           .order("title")
       : Promise.resolve({ data: [] as any[] }),
+    supabase
+      .from("document_types")
+      .select("id,name,code,subject_type")
+      .eq("active", true)
+      .order("name"),
   ]);
 
   const workflow = workflows?.[0] as any;
@@ -337,6 +344,46 @@ export default async function EnrollmentCaseDetailPage({
                     <p className="mt-2 text-xs text-[#98a2b3]">
                       Reuse is recorded explicitly. Linking a document moves the requirement to Received; verification remains a human review step.
                     </p>
+
+                    <div className="mt-4 border-t border-[#eaecf0] pt-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Or upload a new document</p>
+                      <form
+                        action={uploadDocumentForRequirement}
+                        className="mt-3 grid gap-2 sm:grid-cols-2"
+                      >
+                        <input type="hidden" name="case_id" value={id} />
+                        <input type="hidden" name="requirement_id" value={req.id} />
+
+                        <select name="document_type_id" className="tba-input !py-2" defaultValue="" required>
+                          <option value="" disabled>Select document type</option>
+                          {(documentTypes ?? []).map((type: any) => (
+                            <option key={type.id} value={type.id}>{type.name}</option>
+                          ))}
+                        </select>
+
+                        <input
+                          name="title"
+                          className="tba-input !py-2"
+                          defaultValue={req.title}
+                          required
+                        />
+
+                        <input name="issued_date" type="date" className="tba-input !py-2" />
+                        <input name="expiration_date" type="date" className="tba-input !py-2" />
+
+                        <input
+                          name="file"
+                          type="file"
+                          className="tba-input sm:col-span-2"
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
+                          required
+                        />
+
+                        <div className="sm:col-span-2">
+                          <SubmitButton idleLabel="Upload + attach" pendingLabel="Uploading..." />
+                        </div>
+                      </form>
+                    </div>
                   </div>
                 ) : null}
 
