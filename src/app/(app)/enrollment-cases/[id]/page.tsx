@@ -5,12 +5,15 @@ import {
   addCaseNote,
   attachExistingDocumentToRequirement,
   completeFollowup,
+  createCaseDeficiency,
   createCaseTask,
   generateCaseRequirements,
+  recordCaseMilestone,
   recordCaseSubmission,
   scheduleFollowup,
   updateCaseStatus,
   updateRequirementStatus,
+  updateCaseDeficiency,
   updateTaskStatus,
   updateWorkflowStep,
 } from "@/lib/actions/cases";
@@ -55,6 +58,8 @@ export default async function EnrollmentCaseDetailPage({
     { data: documentTypes },
     { data: documentLinks },
     { data: submissions },
+    { data: milestones },
+    { data: deficiencies },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -95,6 +100,16 @@ export default async function EnrollmentCaseDetailPage({
       .select("id,sequence_number,submission_method,submitted_at,recipient,reference_number,notes,status")
       .eq("case_id", id)
       .order("sequence_number", { ascending: false }),
+    supabase
+      .from("case_milestones")
+      .select("id,milestone_code,outcome,occurred_at,value_date,reference_number,notes,submission_id")
+      .eq("case_id", id)
+      .order("occurred_at", { ascending: false }),
+    supabase
+      .from("case_deficiencies")
+      .select("id,title,description,requested_by,received_at,due_at,status,response_submitted_at,resolved_at,notes,submission_id")
+      .eq("case_id", id)
+      .order("received_at", { ascending: false }),
   ]);
 
   const workflow = workflows?.[0] as any;
