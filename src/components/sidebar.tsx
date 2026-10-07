@@ -10,6 +10,8 @@ const navigation = [
   { href: "/clients", label: "Clients" },
   { href: "/providers", label: "Providers" },
   { href: "/organizations", label: "Organizations" },
+  { href: "/locations", label: "Locations" },
+  { href: "/projects", label: "Projects" },
   { href: "/enrollment-cases", label: "Enrollment Cases" },
 ];
 
