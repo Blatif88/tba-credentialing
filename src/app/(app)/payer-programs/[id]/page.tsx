@@ -215,6 +215,11 @@ export default async function PayerProgramDetailPage({
             const hasTenantOverride = tenantOverrideParents.has(ruleId);
             const hasDraft = sorted.some((version) => version.version_status === "draft");
             const effectIds = latest.effects.map((effect: any) => effect.id).join(",");
+            const isProgramSpecific = latest.conditions.some(
+              (condition: any) =>
+                condition.field === "payer_offering_id" &&
+                String(condition.value).replaceAll('"', "") === id,
+            );
 
             return (
               <article key={ruleId} className="rounded-2xl border border-[#eaecf0] p-5">
@@ -232,7 +237,7 @@ export default async function PayerProgramDetailPage({
                     {latest.description ? <p className="mt-2 text-sm text-[#667085]">{latest.description}</p> : null}
                   </div>
 
-                  {!isTenantRule && isAdmin && !hasTenantOverride && latest.version_status === "approved" ? (
+                  {!isTenantRule && isProgramSpecific && isAdmin && !hasTenantOverride && latest.version_status === "approved" ? (
                     <form action={cloneGlobalRuleToTenantDraft}>
                       <input type="hidden" name="payer_offering_id" value={id} />
                       <input type="hidden" name="rule_version_id" value={latest.rule_version_id} />
