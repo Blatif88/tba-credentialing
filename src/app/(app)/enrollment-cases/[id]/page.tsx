@@ -735,6 +735,187 @@ export default async function EnrollmentCaseDetailPage({
         </div>
       </section>
 
+      <section className="mb-6 grid gap-6 xl:grid-cols-2">
+        <div className="tba-card p-6">
+          <h2 className="text-lg font-semibold">Post-submission milestones</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Record payer confirmation, approval, effective date, loading, directory verification, claims testing, and activation milestones.
+          </p>
+
+          <form action={recordCaseMilestone} className="mt-5 grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="case_id" value={id} />
+
+            <div>
+              <label className="tba-label">Milestone</label>
+              <select name="milestone_code" className="tba-input" defaultValue="submission_confirmation" required>
+                <option value="submission_confirmation">Submission confirmation</option>
+                <option value="credentialing_approval">Credentialing approval</option>
+                <option value="contract_executed">Contract executed</option>
+                <option value="effective_date">Effective date</option>
+                <option value="payer_loaded">Payer loaded</option>
+                <option value="directory_verified">Directory verified</option>
+                <option value="claims_test">Claims test</option>
+                <option value="era_complete">ERA complete</option>
+                <option value="eft_complete">EFT complete</option>
+                <option value="edi_complete">EDI complete</option>
+                <option value="operational_complete">Operational complete</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="tba-label">Outcome</label>
+              <select name="outcome" className="tba-input" defaultValue="completed">
+                <option value="completed">Completed</option>
+                <option value="passed">Passed</option>
+                <option value="failed">Failed</option>
+                <option value="not_applicable">Not applicable</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="tba-label">Occurred date/time</label>
+              <input name="occurred_at" type="datetime-local" className="tba-input" required />
+            </div>
+
+            <div>
+              <label className="tba-label">Effective/value date</label>
+              <input name="value_date" type="date" className="tba-input" />
+            </div>
+
+            <div>
+              <label className="tba-label">Related submission</label>
+              <select name="submission_id" className="tba-input" defaultValue="">
+                <option value="">No specific submission</option>
+                {(submissions ?? []).map((submission) => (
+                  <option key={submission.id} value={submission.id}>
+                    Submission #{submission.sequence_number} · {new Date(submission.submitted_at).toLocaleDateString()}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="tba-label">Reference number</label>
+              <input name="reference_number" className="tba-input" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="tba-label">Notes</label>
+              <textarea name="notes" className="tba-input min-h-24" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <SubmitButton idleLabel="Record milestone" pendingLabel="Recording..." />
+            </div>
+          </form>
+
+          <div className="mt-6 border-t border-[#eaecf0] pt-5">
+            <h3 className="font-semibold">Milestone history</h3>
+            <div className="mt-3 grid gap-3">
+              {(milestones ?? []).length ? milestones!.map((milestone) => (
+                <div key={milestone.id} className="rounded-xl border border-[#eaecf0] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-medium capitalize">{milestone.milestone_code.replaceAll("_", " ")}</p>
+                    <span className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs font-semibold capitalize text-[#475467]">
+                      {milestone.outcome.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-[#667085]">{fmt(milestone.occurred_at)}</p>
+                  {milestone.value_date ? <p className="mt-2 text-sm text-[#667085]">Date: {milestone.value_date}</p> : null}
+                  {milestone.reference_number ? <p className="mt-1 text-sm text-[#667085]">Reference: {milestone.reference_number}</p> : null}
+                  {milestone.notes ? <p className="mt-2 whitespace-pre-wrap text-sm text-[#667085]">{milestone.notes}</p> : null}
+                </div>
+              )) : <p className="text-sm text-[#667085]">No post-submission milestones recorded yet.</p>}
+            </div>
+          </div>
+        </div>
+
+        <div className="tba-card p-6">
+          <h2 className="text-lg font-semibold">Deficiencies / additional information</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Track payer requests, response submission, and resolution without losing the original request history.
+          </p>
+
+          <form action={createCaseDeficiency} className="mt-5 grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="case_id" value={id} />
+
+            <div className="sm:col-span-2">
+              <label className="tba-label">Request title</label>
+              <input name="title" className="tba-input" required />
+            </div>
+
+            <div>
+              <label className="tba-label">Received date/time</label>
+              <input name="received_at" type="datetime-local" className="tba-input" required />
+            </div>
+
+            <div>
+              <label className="tba-label">Due date/time</label>
+              <input name="due_at" type="datetime-local" className="tba-input" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="tba-label">Requested by</label>
+              <input name="requested_by" className="tba-input" placeholder="Payer reviewer, portal, department..." />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="tba-label">Description</label>
+              <textarea name="description" className="tba-input min-h-24" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="tba-label">Notes</label>
+              <textarea name="notes" className="tba-input min-h-20" />
+            </div>
+
+            <div className="sm:col-span-2">
+              <SubmitButton idleLabel="Add deficiency" pendingLabel="Adding..." />
+            </div>
+          </form>
+
+          <div className="mt-6 border-t border-[#eaecf0] pt-5">
+            <div className="grid gap-3">
+              {(deficiencies ?? []).length ? deficiencies!.map((item) => (
+                <div key={item.id} className="rounded-xl border border-[#eaecf0] p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{item.title}</p>
+                      <p className="mt-1 text-xs text-[#667085]">
+                        Received {fmt(item.received_at)}
+                        {item.due_at ? " · due " + fmt(item.due_at) : ""}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs font-semibold capitalize text-[#475467]">
+                      {item.status.replaceAll("_", " ")}
+                    </span>
+                  </div>
+
+                  {item.description ? <p className="mt-3 text-sm text-[#667085]">{item.description}</p> : null}
+                  {item.requested_by ? <p className="mt-2 text-xs text-[#667085]">Requested by: {item.requested_by}</p> : null}
+
+                  <form action={updateCaseDeficiency} className="mt-4 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto]">
+                    <input type="hidden" name="case_id" value={id} />
+                    <input type="hidden" name="deficiency_id" value={item.id} />
+                    <select name="status" className="tba-input !py-2" defaultValue={item.status}>
+                      <option value="open">Open</option>
+                      <option value="response_prepared">Response prepared</option>
+                      <option value="response_submitted">Response submitted</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="waived">Waived</option>
+                    </select>
+                    <input name="notes" className="tba-input !py-2" defaultValue={item.notes ?? ""} placeholder="Update notes" />
+                    <button type="submit" className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]">
+                      Save
+                    </button>
+                  </form>
+                </div>
+              )) : <p className="text-sm text-[#667085]">No payer deficiencies recorded.</p>}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="tba-card p-6">
         <h2 className="text-lg font-semibold">Timeline</h2>
         <div className="mt-5 grid gap-4">
