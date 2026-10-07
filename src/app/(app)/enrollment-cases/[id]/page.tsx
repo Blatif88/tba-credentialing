@@ -937,6 +937,153 @@ export default async function EnrollmentCaseDetailPage({
         </div>
       </section>
 
+      <section className="mb-6 grid gap-6 xl:grid-cols-3">
+        <div className="tba-card p-6">
+          <h2 className="text-lg font-semibold">Contracting</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Track contract receipt, review, signature, execution, and effective date.
+          </p>
+
+          <form action={createCaseContract} className="mt-5 grid gap-3">
+            <input type="hidden" name="case_id" value={id} />
+            <input name="contract_name" className="tba-input" placeholder="Contract name" required />
+
+            <select name="status" className="tba-input" defaultValue="pending">
+              <option value="pending">Pending</option>
+              <option value="under_review">Under review</option>
+              <option value="signature_pending">Signature pending</option>
+              <option value="executed">Executed</option>
+              <option value="not_required">Not required</option>
+              <option value="declined">Declined</option>
+            </select>
+
+            <input name="received_at" type="datetime-local" className="tba-input" />
+            <input name="sent_for_signature_at" type="datetime-local" className="tba-input" />
+            <input name="executed_at" type="datetime-local" className="tba-input" />
+            <input name="effective_date" type="date" className="tba-input" />
+            <input name="reference_number" className="tba-input" placeholder="Contract/reference number" />
+            <textarea name="notes" className="tba-input min-h-20" placeholder="Contract notes" />
+
+            <SubmitButton idleLabel="Add contract record" pendingLabel="Saving..." />
+          </form>
+
+          <div className="mt-5 grid gap-3 border-t border-[#eaecf0] pt-4">
+            {(contracts ?? []).length ? contracts!.map((item) => (
+              <div key={item.id} className="rounded-xl border border-[#eaecf0] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{item.contract_name}</p>
+                  <span className="text-xs font-semibold capitalize text-[#475467]">
+                    {item.status.replaceAll("_", " ")}
+                  </span>
+                </div>
+                {item.reference_number ? <p className="mt-2 text-xs text-[#667085]">Ref: {item.reference_number}</p> : null}
+                {item.effective_date ? <p className="mt-1 text-xs text-[#667085]">Effective: {item.effective_date}</p> : null}
+              </div>
+            )) : <p className="text-sm text-[#667085]">No contract records yet.</p>}
+          </div>
+        </div>
+
+        <div className="tba-card p-6">
+          <h2 className="text-lg font-semibold">Directory verification</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Verify the payer directory listing before claims testing.
+          </p>
+
+          <form action={recordDirectoryVerification} className="mt-5 grid gap-3">
+            <input type="hidden" name="case_id" value={id} />
+            <input name="verified_at" type="datetime-local" className="tba-input" required />
+            <input name="directory_url" className="tba-input" placeholder="Directory URL" />
+
+            <select name="outcome" className="tba-input" defaultValue="passed">
+              <option value="passed">Passed</option>
+              <option value="failed">Failed</option>
+            </select>
+
+            <label className="flex items-center gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="listing_found" /> Listing found
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="name_correct" /> Name correct
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="location_correct" /> Location correct
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="specialty_correct" /> Specialty correct
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="network_correct" /> Network correct
+            </label>
+
+            <textarea name="notes" className="tba-input min-h-20" placeholder="Directory verification notes" />
+            <SubmitButton idleLabel="Record directory check" pendingLabel="Saving..." />
+          </form>
+
+          <div className="mt-5 grid gap-3 border-t border-[#eaecf0] pt-4">
+            {(directoryVerifications ?? []).length ? directoryVerifications!.map((item) => (
+              <div key={item.id} className="rounded-xl border border-[#eaecf0] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">{fmt(item.verified_at)}</p>
+                  <span className="text-xs font-semibold capitalize text-[#475467]">{item.outcome}</span>
+                </div>
+                {item.directory_url ? (
+                  <a href={item.directory_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#175cd3] underline">
+                    Open directory
+                  </a>
+                ) : null}
+              </div>
+            )) : <p className="text-sm text-[#667085]">No directory checks yet.</p>}
+          </div>
+        </div>
+
+        <div className="tba-card p-6">
+          <h2 className="text-lg font-semibold">Claims testing</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Record the first billing/claims connectivity test and payer response.
+          </p>
+
+          <form action={recordClaimTest} className="mt-5 grid gap-3">
+            <input type="hidden" name="case_id" value={id} />
+
+            <select name="test_type" className="tba-input" defaultValue="professional_837p">
+              <option value="professional_837p">Professional 837P</option>
+              <option value="institutional_837i">Institutional 837I</option>
+              <option value="dental_837d">Dental 837D</option>
+              <option value="other">Other</option>
+            </select>
+
+            <input name="submitted_at" type="datetime-local" className="tba-input" required />
+            <input name="response_at" type="datetime-local" className="tba-input" />
+
+            <select name="outcome" className="tba-input" defaultValue="pending">
+              <option value="pending">Pending</option>
+              <option value="passed">Passed</option>
+              <option value="failed">Failed</option>
+            </select>
+
+            <input name="payer_reference" className="tba-input" placeholder="Payer reference" />
+            <input name="clearinghouse_reference" className="tba-input" placeholder="Clearinghouse reference" />
+            <input name="response_code" className="tba-input" placeholder="Response/denial code" />
+            <textarea name="notes" className="tba-input min-h-20" placeholder="Claims test notes" />
+
+            <SubmitButton idleLabel="Record claims test" pendingLabel="Saving..." />
+          </form>
+
+          <div className="mt-5 grid gap-3 border-t border-[#eaecf0] pt-4">
+            {(claimTests ?? []).length ? claimTests!.map((item) => (
+              <div key={item.id} className="rounded-xl border border-[#eaecf0] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium capitalize">{item.test_type.replaceAll("_", " ")}</p>
+                  <span className="text-xs font-semibold capitalize text-[#475467]">{item.outcome}</span>
+                </div>
+                <p className="mt-1 text-xs text-[#667085]">Submitted {fmt(item.submitted_at)}</p>
+                {item.response_code ? <p className="mt-1 text-xs text-[#667085]">Response: {item.response_code}</p> : null}
+              </div>
+            )) : <p className="text-sm text-[#667085]">No claims tests recorded yet.</p>}
+          </div>
+        </div>
+      </section>
+
       <section className="tba-card p-6">
         <h2 className="text-lg font-semibold">Timeline</h2>
         <div className="mt-5 grid gap-4">
