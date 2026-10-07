@@ -5,11 +5,14 @@ import {
   addCaseNote,
   attachExistingDocumentToRequirement,
   completeFollowup,
+  createCaseContract,
   createCaseDeficiency,
   createCaseTask,
   generateCaseRequirements,
   recordCaseMilestone,
   recordCaseSubmission,
+  recordClaimTest,
+  recordDirectoryVerification,
   scheduleFollowup,
   updateCaseStatus,
   updateRequirementStatus,
@@ -60,6 +63,9 @@ export default async function EnrollmentCaseDetailPage({
     { data: submissions },
     { data: milestones },
     { data: deficiencies },
+    { data: contracts },
+    { data: directoryVerifications },
+    { data: claimTests },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -110,6 +116,21 @@ export default async function EnrollmentCaseDetailPage({
       .select("id,title,description,requested_by,received_at,due_at,status,response_submitted_at,resolved_at,notes,submission_id")
       .eq("case_id", id)
       .order("received_at", { ascending: false }),
+    supabase
+      .from("case_contracts")
+      .select("id,contract_name,status,received_at,sent_for_signature_at,executed_at,effective_date,reference_number,notes")
+      .eq("case_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("case_directory_verifications")
+      .select("id,verified_at,directory_url,listing_found,name_correct,location_correct,specialty_correct,network_correct,outcome,notes")
+      .eq("case_id", id)
+      .order("verified_at", { ascending: false }),
+    supabase
+      .from("case_claim_tests")
+      .select("id,test_type,submitted_at,response_at,outcome,payer_reference,clearinghouse_reference,response_code,notes")
+      .eq("case_id", id)
+      .order("submitted_at", { ascending: false }),
   ]);
 
   const workflow = workflows?.[0] as any;
