@@ -241,3 +241,56 @@ export async function addCaseNote(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
 }
+
+
+export async function generateCaseRequirements(formData: FormData) {
+  const { supabase } = await context();
+  const caseId = value(formData, "case_id");
+
+  if (!caseId) throw new Error("Case is required.");
+
+  const { error } = await supabase.rpc("generate_case_requirements", {
+    p_case_id: caseId,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+}
+
+export async function updateRequirementStatus(formData: FormData) {
+  const { supabase, user } = await context();
+  const caseId = value(formData, "case_id");
+  const requirementId = value(formData, "requirement_id");
+  const status = value(formData, "status");
+  const waiverReason = value(formData, "waiver_reason");
+
+  if (!caseId || !requirementId || !status) {
+    throw new Error("Case, requirement, and status are required.");
+  }
+
+  const updates: Record<string, unknown> = {
+    status,
+    updated_by: user.id,
+  };
+
+  if (status === "completed") {
+    updates.completed_by = user.id;
+    updates.completed_at = new Date().toISOString();
+  }
+
+  if (status === "waived") {
+    if (!waiverReason) throw new Error("A waiver reason is required.");
+    updates.waived_by = user.id;
+    updates.waived_at = new Date().toISOString();
+    updates.waiver_reason = waiverReason;
+  }
+
+  const { error } = await supabase
+    .from("case_requirements")
+    .update(updates)
+    .eq("id", requirementId)
+    .eq("case_id", caseId);
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+}
