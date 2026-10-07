@@ -14,6 +14,7 @@ const navigation = [
   { href: "/projects", label: "Projects" },
   { href: "/enrollment-cases", label: "Enrollment Cases" },
   { href: "/documents", label: "Documents" },
+  { href: "/payer-programs", label: "Payer Programs" },
 ];
 
 export function Sidebar({ email }: { email: string }) {
