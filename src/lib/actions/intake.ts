@@ -128,61 +128,42 @@ export async function updateProviderRecord(formData: FormData) {
 }
 
 export async function createCredentialingProject(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
+
   const clientId = value(formData, "client_id");
   const providerId = value(formData, "provider_id");
   const organizationId = value(formData, "organization_id");
-  const locationId = value(formData, "location_id");
+  const payerOfferingId = value(formData, "payer_offering_id");
   const name = value(formData, "name");
 
   if (!clientId || !name) throw new Error("Project name and client are required.");
   if (!providerId && !organizationId) throw new Error("Select at least a provider or organization.");
+  if (!payerOfferingId) throw new Error("Select a payer program.");
 
-  const { data: project, error } = await supabase.from("credentialing_projects").insert({
-    tenant_id: tenantId,
-    client_id: clientId,
-    name,
-    project_type: "credentialing",
-    status: "draft",
-    start_date: value(formData, "start_date") || null,
-    target_date: value(formData, "target_date") || null,
-    owner_user_id: user.id,
-    created_by: user.id,
-    updated_by: user.id,
-  }).select("id").single();
+  const { data, error } = await supabase.rpc("create_credentialing_case_bundle", {
+    p_client_id: clientId,
+    p_project_name: name,
+    p_provider_id: providerId || null,
+    p_organization_id: organizationId || null,
+    p_location_id: value(formData, "location_id") || null,
+    p_payer_offering_id: payerOfferingId,
+    p_state: value(formData, "state").toUpperCase() || null,
+    p_enrollment_type: value(formData, "enrollment_type") || "initial",
+    p_entity_context: value(formData, "entity_context") || "individual",
+    p_network_intent: value(formData, "network_intent") || "in_network",
+    p_start_date: value(formData, "start_date") || null,
+    p_target_date: value(formData, "target_date") || null,
+  });
 
-  if (error || !project) throw new Error(error?.message ?? "Could not create project.");
+  if (error) throw new Error(error.message);
 
-  if (providerId) {
-    const { error: linkError } = await supabase.from("project_providers").insert({
-      tenant_id: tenantId,
-      project_id: project.id,
-      provider_id: providerId,
-      created_by: user.id,
-    });
-    if (linkError) throw new Error(linkError.message);
-  }
-
-  if (organizationId) {
-    const { error: linkError } = await supabase.from("project_organizations").insert({
-      tenant_id: tenantId,
-      project_id: project.id,
-      organization_id: organizationId,
-      created_by: user.id,
-    });
-    if (linkError) throw new Error(linkError.message);
-  }
-
-  if (locationId) {
-    const { error: linkError } = await supabase.from("project_locations").insert({
-      tenant_id: tenantId,
-      project_id: project.id,
-      location_id: locationId,
-      created_by: user.id,
-    });
-    if (linkError) throw new Error(linkError.message);
-  }
-
+  const result = data as { case_id?: string } | null;
   revalidatePath("/projects");
+  revalidatePath("/enrollment-cases");
+
+  if (result?.case_id) {
+    redirect(`/enrollment-cases`);
+  }
+
   redirect("/projects");
 }
