@@ -294,3 +294,54 @@ export async function updateRequirementStatus(formData: FormData) {
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
 }
+
+
+export async function attachExistingDocumentToRequirement(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const caseId = value(formData, "case_id");
+  const requirementId = value(formData, "requirement_id");
+  const documentId = value(formData, "document_id");
+
+  if (!caseId || !requirementId || !documentId) {
+    throw new Error("Case, requirement, and document are required.");
+  }
+
+  const { data: requirement, error: requirementError } = await supabase
+    .from("case_requirements")
+    .select("id,case_id,requirement_type")
+    .eq("id", requirementId)
+    .eq("case_id", caseId)
+    .single();
+
+  if (requirementError || !requirement) {
+    throw new Error("Requirement is not available.");
+  }
+
+  if (requirement.requirement_type !== "document") {
+    throw new Error("Only document requirements can receive a document attachment.");
+  }
+
+  const { data: document, error: documentError } = await supabase
+    .from("documents")
+    .select("id")
+    .eq("id", documentId)
+    .is("archived_at", null)
+    .single();
+
+  if (documentError || !document) {
+    throw new Error("Document is not available.");
+  }
+
+  const { error } = await supabase.from("document_links").insert({
+    tenant_id: tenantId,
+    document_id: documentId,
+    linked_type: "case_requirement",
+    linked_id: requirementId,
+    link_purpose: "supports",
+    status: "active",
+    created_by: user.id,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+}
