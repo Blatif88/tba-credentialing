@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
 import {
   addCaseNote,
+  attachExistingDocumentToRequirement,
   completeFollowup,
   createCaseTask,
   generateCaseRequirements,
@@ -30,7 +31,7 @@ export default async function EnrollmentCaseDetailPage({
   const { data: caseRow } = await supabase
     .from("enrollment_cases")
     .select(
-      "id,tenant_id,project_id,provider_id,organization_id,payer_id,payer_offering_id,enrollment_type,network_intent,entity_context,state,status_code,priority,submitted_at,approved_at,effective_date,next_followup_at,providers(first_name,last_name,credential,individual_npi),organizations(legal_name,entity_npi),payer_organizations(display_name),payer_offerings(name),credentialing_projects(name,clients(name))"
+      "id,tenant_id,project_id,provider_id,organization_id,payer_id,payer_offering_id,enrollment_type,network_intent,entity_context,state,status_code,priority,submitted_at,approved_at,effective_date,next_followup_at,providers(first_name,last_name,credential,individual_npi),organizations(legal_name,entity_npi),payer_organizations(display_name),payer_offerings(name),credentialing_projects(id,name,client_id,clients(name))"
     )
     .eq("id", id)
     .single();
@@ -46,6 +47,8 @@ export default async function EnrollmentCaseDetailPage({
     { data: notes },
     { data: timeline },
     { data: locations },
+    { data: portals },
+    { data: documents },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -55,6 +58,22 @@ export default async function EnrollmentCaseDetailPage({
     supabase.from("notes").select("id,category,body,created_at").eq("subject_type", "case").eq("subject_id", id).order("created_at", { ascending: false }),
     supabase.from("timeline_events").select("id,event_type,title,description,occurred_at,metadata").eq("case_id", id).order("occurred_at", { ascending: false }),
     supabase.from("case_locations").select("id,included,locations(name,address_line_1,address_line_2,city,state,zip)").eq("case_id", id),
+    supabase
+      .from("portals")
+      .select("id,name,portal_url,purpose,instructions,notes,mfa_required,automation_level,last_verified_at")
+      .eq("payer_offering_id", caseRow.payer_offering_id)
+      .eq("state", caseRow.state)
+      .eq("status", "active")
+      .order("name"),
+    (caseRow as any).credentialing_projects?.client_id
+      ? supabase
+          .from("documents")
+          .select("id,title,expiration_date,status,document_types(name,code)")
+          .eq("client_id", (caseRow as any).credentialing_projects.client_id)
+          .is("archived_at", null)
+          .eq("status", "active")
+          .order("title")
+      : Promise.resolve({ data: [] as any[] }),
   ]);
 
   const workflow = workflows?.[0] as any;
@@ -145,6 +164,55 @@ export default async function EnrollmentCaseDetailPage({
         </div>
       </section>
 
+
+      <section className="tba-card mb-6 p-6">
+        <div>
+          <h2 className="text-lg font-semibold">Portal access & enrollment channels</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Verified payer resources for this program. Enrollment access and post-enrollment account access are shown separately.
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {(portals ?? []).length ? portals!.map((portal: any) => (
+            <div key={portal.id} className="rounded-xl border border-[#eaecf0] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-[#101828]">{portal.name}</p>
+                  <p className="mt-1 text-xs text-[#667085]">{portal.purpose ?? "Payer portal"}</p>
+                </div>
+                <span className="rounded-full bg-[#f2f4f7] px-2 py-1 text-xs capitalize text-[#475467]">
+                  {portal.automation_level.replaceAll("_", " ")}
+                </span>
+              </div>
+
+              {portal.instructions ? <p className="mt-3 text-sm text-[#667085]">{portal.instructions}</p> : null}
+              {portal.notes ? <p className="mt-2 text-xs text-[#98a2b3]">{portal.notes}</p> : null}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[#667085]">
+                <span>MFA: {portal.mfa_required ? "Required" : "Not flagged"}</span>
+                {portal.last_verified_at ? <span>Verified {new Date(portal.last_verified_at).toLocaleDateString()}</span> : null}
+              </div>
+
+              {portal.portal_url ? (
+                <a
+                  href={portal.portal_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-4 inline-flex rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold text-[#344054] hover:bg-[#f9fafb]"
+                >
+                  Open resource
+                </a>
+              ) : null}
+            </div>
+          )) : (
+            <div className="lg:col-span-3 rounded-xl bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#667085]">
+              No verified portal/resource route has been added for this payer program yet.
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="tba-card mb-6 p-6">
         <div className="flex items-end justify-between gap-4">
           <div>
@@ -230,6 +298,47 @@ export default async function EnrollmentCaseDetailPage({
                 </div>
 
                 {req.description ? <p className="mt-2 text-sm text-[#667085]">{req.description}</p> : null}
+
+                {req.requirement_type === "document" ? (
+                  <div className="mt-4 rounded-xl bg-[#f9fafb] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Supporting document</p>
+                    {(documents ?? []).length ? (
+                      <form action={attachExistingDocumentToRequirement} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                        <input type="hidden" name="case_id" value={id} />
+                        <input type="hidden" name="requirement_id" value={req.id} />
+                        <select name="document_id" className="tba-input !py-2" defaultValue="" required>
+                          <option value="" disabled>Select existing document</option>
+                          {(documents ?? []).map((document: any) => (
+                            <option key={document.id} value={document.id}>
+                              {document.title}
+                              {document.document_types?.name ? " — " + document.document_types.name : ""}
+                              {document.expiration_date ? " — expires " + document.expiration_date : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          name="reuse_reason"
+                          className="tba-input !py-2"
+                          placeholder="Reason for reuse"
+                          required
+                        />
+                        <button
+                          type="submit"
+                          className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-white"
+                        >
+                          Approve reuse
+                        </button>
+                      </form>
+                    ) : (
+                      <p className="mt-2 text-sm text-[#667085]">
+                        No active client documents are available yet. Add the document to the document repository first, then return here to approve reuse.
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-[#98a2b3]">
+                      Reuse is recorded explicitly. Linking a document moves the requirement to Received; verification remains a human review step.
+                    </p>
+                  </div>
+                ) : null}
 
                 {req.source_reason ? (
                   <p className="mt-3 text-xs text-[#667085]">{req.source_reason}</p>
