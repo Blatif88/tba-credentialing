@@ -332,6 +332,22 @@ export async function attachExistingDocumentToRequirement(formData: FormData) {
     throw new Error("Document is not available.");
   }
 
+  const { error: decisionError } = await supabase.from("document_reuse_decisions").insert({
+    tenant_id: tenantId,
+    document_id: documentId,
+    target_type: "case_requirement",
+    target_id: requirementId,
+    decision: "approved",
+    reason: value(formData, "reuse_reason") || "Approved for reuse on this case requirement.",
+    suggested_by: "user",
+    decided_by: user.id,
+    decided_at: new Date().toISOString(),
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (decisionError) throw new Error(decisionError.message);
+
   const { error } = await supabase.from("document_links").insert({
     tenant_id: tenantId,
     document_id: documentId,
