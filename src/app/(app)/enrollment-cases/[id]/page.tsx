@@ -79,7 +79,7 @@ export default async function EnrollmentCaseDetailPage({
       .from("portals")
       .select("id,name,portal_url,purpose,instructions,notes,mfa_required,automation_level,last_verified_at")
       .eq("payer_offering_id", caseRow.payer_offering_id)
-      .eq("state", caseRow.state)
+      .or("state.is.null,state.eq." + caseRow.state)
       .eq("status", "active")
       .order("name"),
     (caseRow as any).credentialing_projects?.client_id
