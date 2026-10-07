@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/cases";
 import { createClient } from "@/lib/supabase/server";
 import { DocumentUploadForm } from "@/components/documents/document-upload-form";
+import { DocumentOpenButton } from "@/components/documents/document-open-button";
 
 function fmt(value: string | null | undefined) {
   if (!value) return "—";
@@ -51,6 +52,7 @@ export default async function EnrollmentCaseDetailPage({
     { data: portals },
     { data: documents },
     { data: documentTypes },
+    { data: documentLinks },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
@@ -81,6 +83,11 @@ export default async function EnrollmentCaseDetailPage({
       .select("id,name,code,subject_type")
       .eq("active", true)
       .order("name"),
+    supabase
+      .from("document_links")
+      .select("id,linked_id,document_id,documents(id,title,status,expiration_date,external_file_id,storage_connections(provider),document_types(name,code))")
+      .eq("linked_type", "case_requirement")
+      .eq("status", "active"),
   ]);
 
   const workflow = workflows?.[0] as any;
@@ -100,6 +107,30 @@ export default async function EnrollmentCaseDetailPage({
   const subject = provider
     ? [provider.first_name, provider.last_name, provider.credential].filter(Boolean).join(" ")
     : organization?.legal_name ?? caseRow.entity_context;
+
+  const { data: readinessData } = await supabase.rpc("case_readiness", {
+    p_case_id: id,
+  });
+
+  const readiness = readinessData as {
+    ready?: boolean;
+    blocker_count?: number;
+    required_total?: number;
+    satisfied_required?: number;
+    blockers?: Array<{
+      requirement_id?: string | null;
+      title?: string;
+      requirement_type?: string;
+      status?: string;
+    }>;
+  } | null;
+
+  const linksByRequirement = new Map<string, any[]>();
+  for (const link of documentLinks ?? []) {
+    const items = linksByRequirement.get(link.linked_id) ?? [];
+    items.push(link);
+    linksByRequirement.set(link.linked_id, items);
+  }
 
   return (
     <>
@@ -158,6 +189,30 @@ export default async function EnrollmentCaseDetailPage({
 
         <div className="tba-card p-6">
           <h2 className="text-lg font-semibold">Case status</h2>
+
+          <div className={["mt-4 rounded-xl border px-4 py-3 text-sm", readiness?.ready ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"].join(" ")}>
+            <p className="font-semibold">
+              {readiness?.ready ? "Ready for submission" : "Not ready for submission"}
+            </p>
+            <p className="mt-1">
+              {readiness?.satisfied_required ?? 0} of {readiness?.required_total ?? 0} required items satisfied.
+              {!readiness?.ready ? " " + (readiness?.blocker_count ?? 0) + " blocker(s) remain." : ""}
+            </p>
+          </div>
+
+          {!readiness?.ready && (readiness?.blockers ?? []).length ? (
+            <div className="mt-4 rounded-xl bg-[#f9fafb] p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Submission blockers</p>
+              <ul className="mt-2 space-y-2 text-sm text-[#475467]">
+                {(readiness?.blockers ?? []).map((blocker, index) => (
+                  <li key={(blocker.requirement_id ?? "system") + "-" + index}>
+                    {blocker.title ?? "Requirement"} — {(blocker.status ?? "missing").replaceAll("_", " ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <form action={updateCaseStatus} className="mt-5 space-y-4">
             <input type="hidden" name="case_id" value={id} />
             <div>
@@ -166,6 +221,16 @@ export default async function EnrollmentCaseDetailPage({
                 {(statuses ?? []).map((status) => <option key={status.code} value={status.code}>{status.display_name}</option>)}
               </select>
             </div>
+
+            <div>
+              <label className="tba-label">Admin override reason</label>
+              <textarea
+                name="override_reason"
+                className="tba-input min-h-20"
+                placeholder="Only used if an organization admin intentionally advances a case despite readiness blockers."
+              />
+            </div>
+
             <SubmitButton idleLabel="Update status" pendingLabel="Updating..." />
           </form>
         </div>
@@ -309,6 +374,25 @@ export default async function EnrollmentCaseDetailPage({
                 {req.requirement_type === "document" ? (
                   <div className="mt-4 rounded-xl bg-[#f9fafb] p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Supporting document</p>
+
+                    {(linksByRequirement.get(req.id) ?? []).length ? (
+                      <div className="mt-3 grid gap-2">
+                        {(linksByRequirement.get(req.id) ?? []).map((link: any) => (
+                          <div key={link.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#eaecf0] bg-white px-3 py-2">
+                            <div>
+                              <p className="text-sm font-medium text-[#101828]">{link.documents?.title ?? "Linked document"}</p>
+                              <p className="mt-1 text-xs text-[#667085]">
+                                {link.documents?.document_types?.name ?? "Document"}
+                                {link.documents?.expiration_date ? " · expires " + link.documents.expiration_date : ""}
+                              </p>
+                            </div>
+                            {link.documents?.external_file_id && link.documents?.storage_connections?.provider === "supabase_storage" ? (
+                              <DocumentOpenButton objectPath={link.documents.external_file_id} />
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {(documents ?? []).length ? (
                       <form action={attachExistingDocumentToRequirement} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                         <input type="hidden" name="case_id" value={id} />
