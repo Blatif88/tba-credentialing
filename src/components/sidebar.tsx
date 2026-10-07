@@ -13,6 +13,7 @@ const navigation = [
   { href: "/locations", label: "Locations" },
   { href: "/projects", label: "Projects" },
   { href: "/enrollment-cases", label: "Enrollment Cases" },
+  { href: "/documents", label: "Documents" },
 ];
 
 export function Sidebar({ email }: { email: string }) {
