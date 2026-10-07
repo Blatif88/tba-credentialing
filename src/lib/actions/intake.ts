@@ -250,6 +250,18 @@ export async function createCredentialingProject(formData: FormData) {
   revalidatePath("/enrollment-cases");
 
   const result = data as { case_id?: string } | null;
-  if (result?.case_id) redirect("/enrollment-cases");
+
+  if (result?.case_id) {
+    const { error: requirementsError } = await supabase.rpc("generate_case_requirements", {
+      p_case_id: result.case_id,
+    });
+
+    if (requirementsError) {
+      console.error("Requirement generation failed:", requirementsError.message);
+    }
+
+    redirect("/enrollment-cases");
+  }
+
   redirect("/projects");
 }
