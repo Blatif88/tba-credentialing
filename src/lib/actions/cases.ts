@@ -256,15 +256,44 @@ export async function updateRequirementStatus(formData: FormData) {
   const requirementId = value(formData, "requirement_id");
   const status = value(formData, "status");
   const waiverReason = value(formData, "waiver_reason");
+  const reviewNote = value(formData, "review_note");
 
   if (!caseId || !requirementId || !status) {
     throw new Error("Case, requirement, and status are required.");
+  }
+
+  const { data: requirement, error: requirementError } = await supabase
+    .from("case_requirements")
+    .select("requirement_type,completion_value")
+    .eq("id", requirementId)
+    .eq("case_id", caseId)
+    .single();
+
+  if (requirementError || !requirement) {
+    throw new Error("Requirement is not available.");
+  }
+
+  if (
+    ["form", "instruction", "question", "field", "portal", "verification"].includes(requirement.requirement_type) &&
+    ["verified", "completed"].includes(status) &&
+    !reviewNote
+  ) {
+    throw new Error("Add a completion/review note before marking this requirement verified or completed.");
   }
 
   const updates: Record<string, unknown> = {
     status,
     updated_by: user.id,
   };
+
+  if (reviewNote) {
+    updates.completion_value = {
+      ...((requirement.completion_value as Record<string, unknown> | null) ?? {}),
+      review_note: reviewNote,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+    };
+  }
 
   if (status === "completed") {
     updates.completed_by = user.id;
@@ -353,4 +382,72 @@ export async function attachExistingDocumentToRequirement(formData: FormData) {
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
+}
+
+
+export async function recordCaseSubmission(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const caseId = value(formData, "case_id");
+  const submittedAt = value(formData, "submitted_at");
+  const submissionMethod = value(formData, "submission_method");
+  const recipient = value(formData, "recipient");
+  const referenceNumber = value(formData, "reference_number");
+  const notes = value(formData, "notes");
+  const overrideReason = value(formData, "override_reason");
+
+  if (!caseId || !submittedAt || !submissionMethod) {
+    throw new Error("Case, submission date/time, and submission method are required.");
+  }
+
+  const { data: caseRow, error: caseError } = await supabase
+    .from("enrollment_cases")
+    .select("tenant_id")
+    .eq("id", caseId)
+    .single();
+
+  if (caseError || !caseRow || caseRow.tenant_id !== tenantId) {
+    throw new Error("Case is not available.");
+  }
+
+  const { data: lastSubmission } = await supabase
+    .from("case_submissions")
+    .select("sequence_number")
+    .eq("case_id", caseId)
+    .order("sequence_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const sequenceNumber = (lastSubmission?.sequence_number ?? 0) + 1;
+
+  const { error: insertError } = await supabase
+    .from("case_submissions")
+    .insert({
+      tenant_id: tenantId,
+      case_id: caseId,
+      sequence_number: sequenceNumber,
+      submission_method: submissionMethod,
+      submitted_at: new Date(submittedAt).toISOString(),
+      submitted_by: user.id,
+      recipient: recipient || null,
+      reference_number: referenceNumber || null,
+      notes: notes || null,
+      status: "submitted",
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+  if (insertError) throw new Error(insertError.message);
+
+  const { error: transitionError } = await supabase.rpc("transition_enrollment_case_status", {
+    p_case_id: caseId,
+    p_status_code: "submitted",
+    p_override_reason: overrideReason || null,
+  });
+
+  if (transitionError) {
+    throw new Error(transitionError.message);
+  }
+
+  revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
 }
