@@ -225,7 +225,9 @@ export default async function EnrollmentCaseDetailPage({
             <div>
               <label className="tba-label">Status</label>
               <select name="status_code" className="tba-input" defaultValue={caseRow.status_code}>
-                {(statuses ?? []).map((status) => <option key={status.code} value={status.code}>{status.display_name}</option>)}
+                {(statuses ?? [])
+                  .filter((status) => status.code !== "submitted")
+                  .map((status) => <option key={status.code} value={status.code}>{status.display_name}</option>)}
               </select>
             </div>
 
@@ -485,7 +487,7 @@ export default async function EnrollmentCaseDetailPage({
                   </div>
                 ) : null}
 
-                <form action={updateRequirementStatus} className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <form action={updateRequirementStatus} className="mt-4 grid gap-2 sm:grid-cols-2">
                   <input type="hidden" name="case_id" value={id} />
                   <input type="hidden" name="requirement_id" value={req.id} />
                   <select name="status" className="tba-input !py-2" defaultValue={req.status}>
@@ -502,12 +504,19 @@ export default async function EnrollmentCaseDetailPage({
                     className="tba-input !py-2"
                     placeholder="Waiver reason if waived"
                   />
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]"
-                  >
-                    Save
-                  </button>
+                  <textarea
+                    name="review_note"
+                    className="tba-input min-h-20 sm:col-span-2"
+                    placeholder="Completion/review note. Required when verifying or completing forms, instructions, questions, fields, portals, or verification items."
+                  />
+                  <div className="sm:col-span-2">
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]"
+                    >
+                      Save requirement
+                    </button>
+                  </div>
                 </form>
               </div>
             )) : (
