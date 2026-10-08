@@ -362,70 +362,58 @@ export async function attachExistingDocumentToRequirement(formData: FormData) {
 
 
 export async function recordCaseSubmission(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const submittedAt = value(formData, "submitted_at");
   const submissionMethod = value(formData, "submission_method");
-  const recipient = value(formData, "recipient");
-  const referenceNumber = value(formData, "reference_number");
-  const notes = value(formData, "notes");
-  const overrideReason = value(formData, "override_reason");
+  const supersedesSubmissionId = value(formData, "supersedes_submission_id");
+  const correctionReason = value(formData, "correction_reason");
 
   if (!caseId || !submittedAt || !submissionMethod) {
     throw new Error("Case, submission date/time, and submission method are required.");
   }
 
-  const { data: caseRow, error: caseError } = await supabase
-    .from("enrollment_cases")
-    .select("tenant_id")
-    .eq("id", caseId)
-    .single();
-
-  if (caseError || !caseRow || caseRow.tenant_id !== tenantId) {
-    throw new Error("Case is not available.");
+  if (supersedesSubmissionId && !correctionReason) {
+    throw new Error("Correction reason is required when superseding a prior submission.");
   }
 
-  const { data: lastSubmission } = await supabase
-    .from("case_submissions")
-    .select("sequence_number")
-    .eq("case_id", caseId)
-    .order("sequence_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const sequenceNumber = (lastSubmission?.sequence_number ?? 0) + 1;
-
-  const { error: insertError } = await supabase
-    .from("case_submissions")
-    .insert({
-      tenant_id: tenantId,
-      case_id: caseId,
-      sequence_number: sequenceNumber,
-      submission_method: submissionMethod,
-      submitted_at: new Date(submittedAt).toISOString(),
-      submitted_by: user.id,
-      recipient: recipient || null,
-      reference_number: referenceNumber || null,
-      notes: notes || null,
-      status: "submitted",
-      created_by: user.id,
-      updated_by: user.id,
-    });
-
-  if (insertError) throw new Error(insertError.message);
-
-  const { error: transitionError } = await supabase.rpc("transition_enrollment_case_status", {
+  const { error } = await supabase.rpc("record_case_submission", {
     p_case_id: caseId,
-    p_status_code: "submitted",
-    p_override_reason: overrideReason || null,
+    p_submission_method: submissionMethod,
+    p_submitted_at: new Date(submittedAt).toISOString(),
+    p_recipient: value(formData, "recipient") || null,
+    p_reference_number: value(formData, "reference_number") || null,
+    p_notes: value(formData, "notes") || null,
+    p_override_reason: value(formData, "override_reason") || null,
+    p_supersedes_submission_id: supersedesSubmissionId || null,
+    p_correction_reason: correctionReason || null,
   });
 
-  if (transitionError) {
-    throw new Error(transitionError.message);
-  }
+  if (error) throw new Error(error.message);
 
   revalidatePath(casePath(caseId));
   revalidatePath("/enrollment-cases");
+}
+
+export async function closeCaseSubmission(formData: FormData) {
+  const { supabase } = await context();
+  const caseId = value(formData, "case_id");
+  const submissionId = value(formData, "submission_id");
+  const status = value(formData, "status");
+  const reason = value(formData, "reason");
+
+  if (!caseId || !submissionId || !status || !reason) {
+    throw new Error("Case, submission, close status, and reason are required.");
+  }
+
+  const { error } = await supabase.rpc("close_case_submission", {
+    p_submission_id: submissionId,
+    p_status: status,
+    p_reason: reason,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
 }
 
 
