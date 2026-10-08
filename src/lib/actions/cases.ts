@@ -386,7 +386,7 @@ export async function recordCaseMilestone(formData: FormData) {
 
 
 export async function createCaseDeficiency(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const title = value(formData, "title");
   const receivedAt = value(formData, "received_at");
@@ -396,45 +396,23 @@ export async function createCaseDeficiency(formData: FormData) {
     throw new Error("Case, deficiency title, and received date/time are required.");
   }
 
-  const { data: caseRow, error: caseError } = await supabase
-    .from("enrollment_cases")
-    .select("tenant_id")
-    .eq("id", caseId)
-    .single();
-
-  if (caseError || !caseRow || caseRow.tenant_id !== tenantId) {
-    throw new Error("Case is not available.");
-  }
-
-  const { data: latestSubmission } = await supabase
-    .from("case_submissions")
-    .select("id")
-    .eq("case_id", caseId)
-    .order("sequence_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const { error } = await supabase.from("case_deficiencies").insert({
-    tenant_id: tenantId,
-    case_id: caseId,
-    submission_id: latestSubmission?.id ?? null,
-    title,
-    description: value(formData, "description") || null,
-    requested_by: value(formData, "requested_by") || null,
-    received_at: new Date(receivedAt).toISOString(),
-    due_at: dueAt ? new Date(dueAt).toISOString() : null,
-    status: "open",
-    notes: value(formData, "notes") || null,
-    created_by: user.id,
-    updated_by: user.id,
+  const { error } = await supabase.rpc("create_case_deficiency", {
+    p_case_id: caseId,
+    p_title: title,
+    p_received_at: new Date(receivedAt).toISOString(),
+    p_due_at: dueAt ? new Date(dueAt).toISOString() : null,
+    p_requested_by: value(formData, "requested_by") || null,
+    p_description: value(formData, "description") || null,
+    p_notes: value(formData, "notes") || null,
   });
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
 }
 
 export async function updateCaseDeficiency(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const deficiencyId = value(formData, "deficiency_id");
   const status = value(formData, "status");
@@ -443,25 +421,14 @@ export async function updateCaseDeficiency(formData: FormData) {
     throw new Error("Case, deficiency, and status are required.");
   }
 
-  const updates: Record<string, unknown> = {
-    status,
-    notes: value(formData, "notes") || null,
-    updated_by: user.id,
-  };
-
-  if (status === "response_submitted") {
-    updates.response_submitted_at = new Date().toISOString();
-  }
-
-  if (status === "resolved") {
-    updates.resolved_at = new Date().toISOString();
-  }
-
-  const { error } = await supabase
-    .from("case_deficiencies")
-    .update(updates)
-    .eq("id", deficiencyId)
-    .eq("case_id", caseId);
+  const { error } = await supabase.rpc("transition_case_deficiency", {
+    p_case_id: caseId,
+    p_deficiency_id: deficiencyId,
+    p_status: status,
+    p_notes: value(formData, "notes") || null,
+    p_waiver_reason: value(formData, "waiver_reason") || null,
+    p_resolution_notes: value(formData, "resolution_notes") || null,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
