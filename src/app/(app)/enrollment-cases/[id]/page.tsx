@@ -20,6 +20,7 @@ import {
   updateCaseStatus,
   updateRequirementStatus,
   updateCaseDeficiency,
+  updateCaseContract,
   updateTaskStatus,
   updateWorkflowStep,
 } from "@/lib/actions/cases";
@@ -1512,7 +1513,32 @@ export default async function EnrollmentCaseDetailPage({
                   </span>
                 </div>
                 {item.reference_number ? <p className="mt-2 text-xs text-[#667085]">Ref: {item.reference_number}</p> : null}
+                {item.received_at ? <p className="mt-1 text-xs text-[#667085]">Received: {fmt(item.received_at)}</p> : null}
+                {item.sent_for_signature_at ? <p className="mt-1 text-xs text-[#667085]">Sent for signature: {fmt(item.sent_for_signature_at)}</p> : null}
+                {item.executed_at ? <p className="mt-1 text-xs text-[#667085]">Executed: {fmt(item.executed_at)}</p> : null}
                 {item.effective_date ? <p className="mt-1 text-xs text-[#667085]">Effective: {item.effective_date}</p> : null}
+
+                <form action={updateCaseContract} className="mt-4 grid gap-2">
+                  <input type="hidden" name="case_id" value={id} />
+                  <input type="hidden" name="contract_id" value={item.id} />
+                  <select name="status" className="tba-input !py-2" defaultValue={item.status}>
+                    <option value="pending">Pending</option>
+                    <option value="under_review">Under review</option>
+                    <option value="signature_pending">Signature pending</option>
+                    <option value="executed">Executed</option>
+                    <option value="not_required">Not required</option>
+                    <option value="declined">Declined</option>
+                  </select>
+                  <input name="received_at" type="datetime-local" className="tba-input !py-2" />
+                  <input name="sent_for_signature_at" type="datetime-local" className="tba-input !py-2" />
+                  <input name="executed_at" type="datetime-local" className="tba-input !py-2" />
+                  <input name="effective_date" type="date" className="tba-input !py-2" />
+                  <input name="reference_number" className="tba-input !py-2" placeholder="Reference number" />
+                  <textarea name="notes" className="tba-input min-h-20" placeholder="Required when declining; optional otherwise" />
+                  <button type="submit" className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]">
+                    Update contract
+                  </button>
+                </form>
               </div>
             )) : <p className="text-sm text-[#667085]">No contract records yet.</p>}
           </div>
@@ -1533,6 +1559,9 @@ export default async function EnrollmentCaseDetailPage({
               <option value="passed">Passed</option>
               <option value="failed">Failed</option>
             </select>
+            <p className="text-xs text-[#667085]">
+              A passed verification requires all five checks below. Failed verifications require notes.
+            </p>
 
             <label className="flex items-center gap-2 text-sm text-[#475467]">
               <input type="checkbox" name="listing_found" /> Listing found
@@ -1595,6 +1624,9 @@ export default async function EnrollmentCaseDetailPage({
               <option value="passed">Passed</option>
               <option value="failed">Failed</option>
             </select>
+            <p className="text-xs text-[#667085]">
+              Passed/failed tests require a response date. Failed tests also require notes.
+            </p>
 
             <input name="payer_reference" className="tba-input" placeholder="Payer reference" />
             <input name="clearinghouse_reference" className="tba-input" placeholder="Clearinghouse reference" />
