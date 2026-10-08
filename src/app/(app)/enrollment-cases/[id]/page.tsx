@@ -1195,10 +1195,11 @@ export default async function EnrollmentCaseDetailPage({
               <label className="tba-label">Outcome</label>
               <select name="outcome" className="tba-input" defaultValue="completed">
                 <option value="completed">Completed</option>
-                <option value="passed">Passed</option>
-                <option value="failed">Failed</option>
                 <option value="not_applicable">Not applicable</option>
               </select>
+              <p className="mt-1 text-xs text-[#667085]">
+                Directory and claims-test outcomes are recorded in their structured sections below, not as generic milestones.
+              </p>
             </div>
 
             <div>
