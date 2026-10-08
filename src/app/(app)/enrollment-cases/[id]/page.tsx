@@ -192,6 +192,19 @@ export default async function EnrollmentCaseDetailPage({
     };
   } | null;
 
+  const { data: followupPolicyData } = await supabase.rpc("case_followup_policy", {
+    p_case_id: id,
+  });
+
+  const followupPolicy = followupPolicyData as {
+    interval_days?: number;
+    interval_source?: string;
+    next_followup_at?: string | null;
+    pending_count?: number;
+    is_due?: boolean;
+    is_overdue?: boolean;
+  } | null;
+
   const linksByRequirement = new Map<string, any[]>();
   for (const link of documentLinks ?? []) {
     const items = linksByRequirement.get(link.linked_id) ?? [];
@@ -631,41 +644,92 @@ export default async function EnrollmentCaseDetailPage({
 
       <section className="mb-6 grid gap-6 xl:grid-cols-2">
         <div className="tba-card p-6">
-          <h2 className="text-lg font-semibold">Follow-ups</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Follow-ups</h2>
+              <p className="mt-1 text-sm text-[#667085]">
+                Default cadence: {followupPolicy?.interval_days ?? 14} days · {(followupPolicy?.interval_source ?? "tenant_default").replaceAll("_", " ")}
+              </p>
+            </div>
+            {followupPolicy?.next_followup_at ? (
+              <span className={[
+                "rounded-full px-2.5 py-1 text-xs font-semibold",
+                followupPolicy.is_overdue ? "bg-red-50 text-red-700" : followupPolicy.is_due ? "bg-amber-50 text-amber-700" : "bg-[#f2f4f7] text-[#475467]",
+              ].join(" ")}>
+                {followupPolicy.is_overdue ? "Overdue" : followupPolicy.is_due ? "Due" : "Scheduled"} · {fmt(followupPolicy.next_followup_at)}
+              </span>
+            ) : (
+              <span className="rounded-full bg-[#f2f4f7] px-2.5 py-1 text-xs font-semibold text-[#475467]">No pending follow-up</span>
+            )}
+          </div>
+
           <form action={scheduleFollowup} className="mt-5 grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="case_id" value={id} />
-            <div><label className="tba-label">Schedule</label><input name="scheduled_at" type="datetime-local" className="tba-input" required /></div>
+            <div>
+              <label className="tba-label">Schedule</label>
+              <input name="scheduled_at" type="datetime-local" className="tba-input" />
+              <p className="mt-1 text-xs text-[#667085]">Leave blank when using the default cadence.</p>
+            </div>
             <div><label className="tba-label">Method</label><select name="method" className="tba-input" defaultValue="phone"><option value="phone">Phone</option><option value="email">Email</option><option value="portal">Portal</option><option value="fax">Fax</option><option value="mail">Mail</option><option value="other">Other</option></select></div>
+            <label className="sm:col-span-2 flex items-start gap-2 text-sm text-[#475467]">
+              <input type="checkbox" name="use_default_interval" className="mt-1" />
+              <span>Schedule automatically using the current {followupPolicy?.interval_days ?? 14}-day follow-up policy.</span>
+            </label>
             <div className="sm:col-span-2"><label className="tba-label">Notes</label><textarea name="notes" className="tba-input min-h-20" /></div>
             <div className="sm:col-span-2"><SubmitButton idleLabel="Schedule follow-up" pendingLabel="Scheduling..." /></div>
           </form>
 
           <div className="mt-6 border-t border-[#eaecf0] pt-5">
             <div className="grid gap-3">
-              {(followups ?? []).length ? followups!.map((followup) => (
+              {(followups ?? []).length ? followups!.map((followup) => {
+                const overdue = !followup.completed_at && new Date(followup.scheduled_at).getTime() < Date.now();
+                return (
                 <div key={followup.id} className="rounded-xl border border-[#eaecf0] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="font-medium">Follow-up #{followup.sequence_number}</p>
                       <p className="mt-1 text-xs capitalize text-[#667085]">{followup.method ?? "method not set"} · {fmt(followup.scheduled_at)}</p>
                     </div>
-                    <span className="text-xs font-semibold text-[#475467]">{followup.completed_at ? "Completed" : "Pending"}</span>
+                    <span className={[
+                      "text-xs font-semibold",
+                      overdue ? "text-red-700" : "text-[#475467]",
+                    ].join(" ")}>
+                      {followup.completed_at ? "Completed" : overdue ? "Overdue" : "Pending"}
+                    </span>
                   </div>
 
                   {followup.completed_at ? (
-                    <div className="mt-3 text-sm text-[#667085]">{followup.outcome ?? followup.notes ?? "Completed"}</div>
+                    <div className="mt-3 text-sm text-[#667085]">
+                      {followup.outcome ?? followup.notes ?? "Completed"}
+                      {followup.next_followup_at ? <p className="mt-1 text-xs">Next requested: {fmt(followup.next_followup_at)}</p> : null}
+                    </div>
                   ) : (
                     <form action={completeFollowup} className="mt-4 grid gap-3">
                       <input type="hidden" name="case_id" value={id} />
                       <input type="hidden" name="followup_id" value={followup.id} />
                       <input name="outcome" className="tba-input" placeholder="Outcome" />
-                      <input name="next_followup_at" type="datetime-local" className="tba-input" />
                       <textarea name="notes" className="tba-input min-h-20" placeholder="Follow-up notes" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="tba-label">Next follow-up</label>
+                          <input name="next_followup_at" type="datetime-local" className="tba-input" />
+                        </div>
+                        <div>
+                          <label className="tba-label">Next method</label>
+                          <select name="next_method" className="tba-input" defaultValue={followup.method ?? "phone"}>
+                            <option value="phone">Phone</option><option value="email">Email</option><option value="portal">Portal</option><option value="fax">Fax</option><option value="mail">Mail</option><option value="other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+                      <label className="flex items-start gap-2 text-sm text-[#475467]">
+                        <input type="checkbox" name="schedule_default_next" className="mt-1" />
+                        <span>If no date is entered, automatically schedule the next follow-up using the {followupPolicy?.interval_days ?? 14}-day policy.</span>
+                      </label>
                       <SubmitButton idleLabel="Complete follow-up" pendingLabel="Completing..." />
                     </form>
                   )}
                 </div>
-              )) : <p className="text-sm text-[#667085]">No follow-ups yet.</p>}
+              )}) : <p className="text-sm text-[#667085]">No follow-ups yet.</p>}
             </div>
           </div>
         </div>
