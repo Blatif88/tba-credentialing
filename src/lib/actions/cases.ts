@@ -344,7 +344,7 @@ export async function closeCaseSubmission(formData: FormData) {
 
 
 export async function recordCaseMilestone(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const milestoneCode = value(formData, "milestone_code");
   const outcome = value(formData, "outcome") || "completed";
@@ -354,28 +354,15 @@ export async function recordCaseMilestone(formData: FormData) {
     throw new Error("Case, milestone, and occurrence date/time are required.");
   }
 
-  const { data: caseRow, error: caseError } = await supabase
-    .from("enrollment_cases")
-    .select("tenant_id")
-    .eq("id", caseId)
-    .single();
-
-  if (caseError || !caseRow || caseRow.tenant_id !== tenantId) {
-    throw new Error("Case is not available.");
-  }
-
-  const { error } = await supabase.from("case_milestones").insert({
-    tenant_id: tenantId,
-    case_id: caseId,
-    submission_id: value(formData, "submission_id") || null,
-    milestone_code: milestoneCode,
-    outcome,
-    occurred_at: new Date(occurredAt).toISOString(),
-    value_date: value(formData, "value_date") || null,
-    reference_number: value(formData, "reference_number") || null,
-    notes: value(formData, "notes") || null,
-    created_by: user.id,
-    updated_by: user.id,
+  const { error } = await supabase.rpc("record_case_milestone", {
+    p_case_id: caseId,
+    p_submission_id: value(formData, "submission_id") || null,
+    p_milestone_code: milestoneCode,
+    p_outcome: outcome,
+    p_occurred_at: new Date(occurredAt).toISOString(),
+    p_value_date: value(formData, "value_date") || null,
+    p_reference_number: value(formData, "reference_number") || null,
+    p_notes: value(formData, "notes") || null,
   });
 
   if (error) throw new Error(error.message);
