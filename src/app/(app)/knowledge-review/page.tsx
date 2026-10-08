@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { SubmitButton } from "@/components/submit-button";
-import { reviewKnowledgeSource } from "@/lib/actions/knowledge";
+import {
+  reviewKnowledgeSource,
+  reviewPortalResource,
+  setPortalChangeProposalStatus,
+  updatePortalChangeProposal,
+} from "@/lib/actions/knowledge";
 import { createClient } from "@/lib/supabase/server";
 
 function fmt(value?: string | null) {
@@ -11,22 +16,28 @@ function fmt(value?: string | null) {
 
 export default async function KnowledgeReviewPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("knowledge_review_snapshot", {
-    p_stale_days: 90,
-  });
+  const [
+    { data, error },
+    { data: portalData, error: portalError },
+  ] = await Promise.all([
+    supabase.rpc("knowledge_review_snapshot", { p_stale_days: 90 }),
+    supabase.rpc("portal_review_snapshot", { p_stale_days: 90 }),
+  ]);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
+  if (portalError) throw new Error(portalError.message);
 
   const snapshot = (data ?? {}) as any;
+  const portalSnapshot = (portalData ?? {}) as any;
   const counts = snapshot.counts ?? {};
   const drafts = snapshot.drafts ?? [];
   const pending = snapshot.pending_review ?? [];
   const approved = snapshot.approved_overrides ?? [];
   const sourceActions = snapshot.source_actions ?? [];
   const staleSources = snapshot.stale_sources ?? [];
-  const stalePortals = snapshot.stale_portals ?? [];
+  const stalePortals = portalSnapshot.stale_portals ?? [];
+  const portalActions = portalSnapshot.actions ?? [];
+  const portalCounts = portalSnapshot.counts ?? {};
 
   return (
     <>
@@ -43,7 +54,8 @@ export default async function KnowledgeReviewPage() {
           ["Approved overrides", counts.approved_overrides ?? 0],
           ["Source actions", counts.source_actions ?? 0],
           ["Stale sources", counts.stale_sources ?? 0],
-          ["Stale portals", counts.stale_portals ?? 0],
+          ["Portal actions", portalCounts.portal_actions ?? 0],
+          ["Stale portals", portalCounts.stale_portals ?? 0],
         ].map(([label, value]) => (
           <div key={String(label)} className="tba-card p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">{label}</p>
@@ -209,6 +221,119 @@ export default async function KnowledgeReviewPage() {
         </div>
       </section>
 
+      <section className="mb-6 tba-card p-6">
+        <h2 className="text-lg font-semibold">Portal changes requiring action</h2>
+        <p className="mt-1 text-sm text-[#667085]">
+          Portal changes remain proposals until approved. The current portal stays active until a tenant override is approved.
+        </p>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {portalActions.length ? portalActions.map((item: any) => {
+            const proposal = item.proposal;
+            return (
+              <div key={item.review_id} className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-[#101828]">{item.portal_name}</p>
+                    <p className="mt-1 text-xs text-[#667085]">
+                      {item.payer_name ?? "Portal"}{item.state ? " · " + item.state : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold capitalize text-amber-800">
+                    {String(item.outcome).replaceAll("_", " ")}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-sm text-[#475467]">{item.summary}</p>
+
+                {proposal?.status === "draft" ? (
+                  <form action={updatePortalChangeProposal} className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-white p-4">
+                    <input type="hidden" name="proposal_id" value={proposal.id} />
+                    <div>
+                      <label className="tba-label">Portal name</label>
+                      <input name="proposed_name" className="tba-input" defaultValue={proposal.proposed_name ?? ""} required />
+                    </div>
+                    <div>
+                      <label className="tba-label">Portal URL</label>
+                      <input name="proposed_url" className="tba-input" defaultValue={proposal.proposed_url ?? ""} />
+                    </div>
+                    <div>
+                      <label className="tba-label">Purpose</label>
+                      <textarea name="proposed_purpose" className="tba-input min-h-20" defaultValue={proposal.proposed_purpose ?? ""} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="tba-label">MFA</label>
+                        <select name="proposed_mfa_required" className="tba-input" defaultValue={proposal.proposed_mfa_required ? "true" : "false"}>
+                          <option value="true">Required</option>
+                          <option value="false">Not required</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="tba-label">Automation level</label>
+                        <select name="proposed_automation_level" className="tba-input" defaultValue={proposal.proposed_automation_level ?? "manual"}>
+                          <option value="manual">Manual</option>
+                          <option value="assisted">Assisted</option>
+                          <option value="api">API</option>
+                          <option value="browser_automation">Browser automation</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="tba-label">Instructions</label>
+                      <textarea name="proposed_instructions" className="tba-input min-h-24" defaultValue={proposal.proposed_instructions ?? ""} />
+                    </div>
+                    <div>
+                      <label className="tba-label">Notes</label>
+                      <textarea name="proposed_notes" className="tba-input min-h-20" defaultValue={proposal.proposed_notes ?? ""} />
+                    </div>
+                    <div>
+                      <label className="tba-label">Change reason</label>
+                      <textarea name="change_reason" className="tba-input min-h-20" defaultValue={proposal.change_reason ?? item.summary ?? ""} />
+                    </div>
+                    <SubmitButton idleLabel="Save portal draft" pendingLabel="Saving..." />
+                  </form>
+                ) : proposal ? (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-white p-4 text-sm">
+                    <p className="font-medium text-[#344054]">{proposal.proposed_name}</p>
+                    <p className="mt-1 text-xs capitalize text-[#667085]">{String(proposal.status).replaceAll("_", " ")}</p>
+                    {proposal.proposed_url ? <p className="mt-2 break-all text-xs text-[#667085]">{proposal.proposed_url}</p> : null}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm text-[#667085]">No automatic portal proposal was created.</p>
+                )}
+
+                {proposal?.status === "draft" ? (
+                  <form action={setPortalChangeProposalStatus} className="mt-3">
+                    <input type="hidden" name="proposal_id" value={proposal.id} />
+                    <input type="hidden" name="status" value="pending_review" />
+                    <input type="hidden" name="change_reason" value={proposal.change_reason ?? item.summary ?? ""} />
+                    <SubmitButton idleLabel="Submit portal for review" pendingLabel="Submitting..." />
+                  </form>
+                ) : null}
+
+                {proposal?.status === "pending_review" ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <form action={setPortalChangeProposalStatus}>
+                      <input type="hidden" name="proposal_id" value={proposal.id} />
+                      <input type="hidden" name="status" value="approved" />
+                      <input type="hidden" name="change_reason" value={proposal.change_reason ?? item.summary ?? ""} />
+                      <SubmitButton idleLabel="Approve portal override" pendingLabel="Approving..." />
+                    </form>
+                    <form action={setPortalChangeProposalStatus}>
+                      <input type="hidden" name="proposal_id" value={proposal.id} />
+                      <input type="hidden" name="status" value="rejected" />
+                      <input type="hidden" name="change_reason" value="Rejected during portal review." />
+                      <SubmitButton idleLabel="Reject" pendingLabel="Rejecting..." />
+                    </form>
+                  </div>
+                ) : null}
+              </div>
+            );
+          }) : <p className="text-sm text-[#667085]">No portal changes currently require action.</p>}
+        </div>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="tba-card p-6">
           <h2 className="text-lg font-semibold">Official sources due for re-verification</h2>
@@ -291,7 +416,10 @@ export default async function KnowledgeReviewPage() {
                 <p className="mt-1 text-xs text-[#667085]">
                   {item.payer_name ?? "Payer"}{item.state ? " · " + item.state : ""}
                 </p>
-                <p className="mt-2 text-xs text-[#667085]">Last verified: {fmt(item.last_verified_at)}</p>
+                <p className="mt-2 text-xs text-[#667085]">
+                  Catalog verified: {fmt(item.last_verified_at)}
+                  {item.last_tenant_reviewed_at ? " · Tenant reviewed: " + fmt(item.last_tenant_reviewed_at) : ""}
+                </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   {item.url ? (
                     <a href={item.url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-[#175cd3] underline">
@@ -304,6 +432,52 @@ export default async function KnowledgeReviewPage() {
                     </Link>
                   ) : null}
                 </div>
+
+                {portalSnapshot.is_admin ? (
+                  <form action={reviewPortalResource} className="mt-4 grid gap-3 border-t border-[#eaecf0] pt-4">
+                    <input type="hidden" name="portal_id" value={item.id} />
+                    <div>
+                      <label className="tba-label">Observed portal URL</label>
+                      <input name="reviewed_url" className="tba-input" defaultValue={item.url ?? ""} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="tba-label">Observed MFA</label>
+                        <select name="observed_mfa_required" className="tba-input" defaultValue={item.mfa_required ? "true" : "false"}>
+                          <option value="true">Required</option>
+                          <option value="false">Not required</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="tba-label">Observed automation</label>
+                        <select name="observed_automation_level" className="tba-input" defaultValue={item.automation_level ?? "manual"}>
+                          <option value="manual">Manual</option>
+                          <option value="assisted">Assisted</option>
+                          <option value="api">API</option>
+                          <option value="browser_automation">Browser automation</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="tba-label">Review outcome</label>
+                      <select name="outcome" className="tba-input" defaultValue="no_change">
+                        <option value="no_change">No change</option>
+                        <option value="change_detected">Change detected</option>
+                        <option value="unavailable">Portal unavailable</option>
+                        <option value="needs_followup">Needs follow-up</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="tba-label">Review summary</label>
+                      <textarea name="summary" className="tba-input min-h-20" required />
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-[#475467]">
+                      <input type="checkbox" name="create_proposal" className="mt-1" />
+                      <span>Create a tenant portal override proposal when Change detected is selected.</span>
+                    </label>
+                    <SubmitButton idleLabel="Record portal review" pendingLabel="Recording..." />
+                  </form>
+                ) : null}
               </div>
             )) : <p className="text-sm text-[#667085]">No stale portal resources under the current threshold.</p>}
           </div>
