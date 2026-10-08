@@ -784,6 +784,14 @@ export default async function EnrollmentCaseDetailPage({
                   && (!task.assigned_user_id || task.assigned_user_id === taskGovernance?.current_user_id);
 
                 const canManageAssignment = !!taskGovernance?.can_manage_assignments || canSelfManage;
+                const assignmentMembers = taskGovernance?.can_manage_assignments
+                  ? (taskGovernance?.members ?? [])
+                  : (taskGovernance?.members ?? []).filter(
+                      (member) => member.user_id === taskGovernance?.current_user_id,
+                    );
+                const escalationLevels = taskGovernance?.can_manage_assignments
+                  ? [0, 1, 2, 3]
+                  : [1, 2, 3].filter((level) => level > (task.escalation_level ?? 0));
 
                 return (
                   <div key={task.id} className="rounded-xl border border-[#eaecf0] p-4">
@@ -844,7 +852,7 @@ export default async function EnrollmentCaseDetailPage({
                             <input type="hidden" name="task_id" value={task.id} />
                             <select name="assigned_user_id" className="tba-input !py-2" defaultValue={task.assigned_user_id ?? ""}>
                               <option value="">Unassigned</option>
-                              {(taskGovernance?.members ?? []).map((member) => (
+                              {assignmentMembers.map((member) => (
                                 <option key={member.user_id} value={member.user_id}>
                                   {member.display_name} · {member.role_key.replaceAll("_", " ")}
                                 </option>
@@ -859,11 +867,18 @@ export default async function EnrollmentCaseDetailPage({
                         <form action={setCaseTaskEscalation} className="grid gap-2 sm:grid-cols-[130px_1fr_auto]">
                           <input type="hidden" name="case_id" value={id} />
                           <input type="hidden" name="task_id" value={task.id} />
-                          <select name="escalation_level" className="tba-input !py-2" defaultValue={String(task.escalation_level ?? 0)}>
-                            <option value="0">Level 0</option>
-                            <option value="1">Level 1</option>
-                            <option value="2">Level 2</option>
-                            <option value="3">Level 3</option>
+                          <select
+                            name="escalation_level"
+                            className="tba-input !py-2"
+                            defaultValue={String(
+                              taskGovernance?.can_manage_assignments
+                                ? (task.escalation_level ?? 0)
+                                : (escalationLevels[0] ?? task.escalation_level ?? 0),
+                            )}
+                          >
+                            {escalationLevels.map((level) => (
+                              <option key={level} value={level}>Level {level}</option>
+                            ))}
                           </select>
                           <input name="escalation_reason" className="tba-input !py-2" placeholder="Reason required" required />
                           <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">
