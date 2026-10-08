@@ -5,6 +5,7 @@ import {
   addCaseNote,
   attachExistingDocumentToRequirement,
   completeFollowup,
+  closeCaseSubmission,
   createCaseContract,
   createCaseDeficiency,
   createCaseTask,
@@ -99,7 +100,7 @@ export default async function EnrollmentCaseDetailPage({
       .eq("status", "active"),
     supabase
       .from("case_submissions")
-      .select("id,sequence_number,submission_method,submitted_at,recipient,reference_number,notes,status")
+      .select("id,sequence_number,submission_method,submitted_at,recipient,reference_number,notes,status,supersedes_submission_id,correction_reason,closed_at")
       .eq("case_id", id)
       .order("sequence_number", { ascending: false }),
     supabase
@@ -807,6 +808,32 @@ export default async function EnrollmentCaseDetailPage({
             <textarea name="notes" className="tba-input min-h-24" />
           </div>
 
+          {(submissions ?? []).some((submission) => !["cancelled", "superseded"].includes(submission.status)) ? (
+            <>
+              <div className="md:col-span-2">
+                <label className="tba-label">Correction of prior submission</label>
+                <select name="supersedes_submission_id" className="tba-input" defaultValue="">
+                  <option value="">No — record as a new submission</option>
+                  {(submissions ?? [])
+                    .filter((submission) => !["cancelled", "superseded"].includes(submission.status))
+                    .map((submission) => (
+                      <option key={submission.id} value={submission.id}>
+                        Submission #{submission.sequence_number} · {submission.status.replaceAll("_", " ")}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="tba-label">Correction reason</label>
+                <input
+                  name="correction_reason"
+                  className="tba-input"
+                  placeholder="Required when superseding a prior submission"
+                />
+              </div>
+            </>
+          ) : null}
+
           {!readiness?.ready ? (
             <div className="md:col-span-2 xl:col-span-4">
               <label className="tba-label">Admin override reason</label>
@@ -837,7 +864,33 @@ export default async function EnrollmentCaseDetailPage({
                 </div>
                 {submission.recipient ? <p className="mt-2 text-sm text-[#667085]">Recipient: {submission.recipient}</p> : null}
                 {submission.reference_number ? <p className="mt-1 text-sm text-[#667085]">Reference: {submission.reference_number}</p> : null}
+                {submission.supersedes_submission_id ? (
+                  <p className="mt-1 text-sm text-[#667085]">
+                    Correction of prior submission
+                  </p>
+                ) : null}
+                {submission.correction_reason ? (
+                  <p className="mt-1 text-sm text-[#667085]">Reason: {submission.correction_reason}</p>
+                ) : null}
+                {submission.closed_at ? (
+                  <p className="mt-1 text-xs text-[#98a2b3]">Closed {fmt(submission.closed_at)}</p>
+                ) : null}
                 {submission.notes ? <p className="mt-2 whitespace-pre-wrap text-sm text-[#667085]">{submission.notes}</p> : null}
+
+                {!["cancelled", "superseded"].includes(submission.status) ? (
+                  <form action={closeCaseSubmission} className="mt-4 grid gap-2 sm:grid-cols-[160px_1fr_auto]">
+                    <input type="hidden" name="case_id" value={id} />
+                    <input type="hidden" name="submission_id" value={submission.id} />
+                    <select name="status" className="tba-input !py-2" defaultValue="cancelled">
+                      <option value="cancelled">Cancel record</option>
+                      <option value="returned">Returned by payer</option>
+                    </select>
+                    <input name="reason" className="tba-input !py-2" placeholder="Reason required" required />
+                    <button type="submit" className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]">
+                      Save
+                    </button>
+                  </form>
+                ) : null}
               </div>
             )) : <p className="text-sm text-[#667085]">No submission has been recorded yet.</p>}
           </div>
