@@ -114,7 +114,7 @@ export default async function EnrollmentCaseDetailPage({
       .order("occurred_at", { ascending: false }),
     supabase
       .from("case_deficiencies")
-      .select("id,title,description,requested_by,received_at,due_at,status,response_submitted_at,resolved_at,notes,submission_id")
+      .select("id,title,description,requested_by,received_at,due_at,status,response_submitted_at,resolved_at,notes,submission_id,prepared_at,prepared_by,waived_at,waived_by,waiver_reason,resolution_notes")
       .eq("case_id", id)
       .order("received_at", { ascending: false }),
     supabase
@@ -1322,19 +1322,32 @@ export default async function EnrollmentCaseDetailPage({
                   {item.description ? <p className="mt-3 text-sm text-[#667085]">{item.description}</p> : null}
                   {item.requested_by ? <p className="mt-2 text-xs text-[#667085]">Requested by: {item.requested_by}</p> : null}
 
-                  <form action={updateCaseDeficiency} className="mt-4 grid gap-2 sm:grid-cols-[1fr_1.5fr_auto]">
+                  {item.prepared_at ? <p className="mt-2 text-xs text-[#667085]">Response prepared {fmt(item.prepared_at)}</p> : null}
+                  {item.response_submitted_at ? <p className="mt-1 text-xs text-[#667085]">Response submitted {fmt(item.response_submitted_at)}</p> : null}
+                  {item.resolved_at ? <p className="mt-1 text-xs text-[#667085]">Resolved {fmt(item.resolved_at)}</p> : null}
+                  {item.waived_at ? <p className="mt-1 text-xs text-[#667085]">Waived {fmt(item.waived_at)}</p> : null}
+                  {item.waiver_reason ? <p className="mt-2 text-sm text-[#667085]">Waiver reason: {item.waiver_reason}</p> : null}
+                  {item.resolution_notes ? <p className="mt-2 text-sm text-[#667085]">Resolution: {item.resolution_notes}</p> : null}
+
+                  <form action={updateCaseDeficiency} className="mt-4 grid gap-2">
                     <input type="hidden" name="case_id" value={id} />
                     <input type="hidden" name="deficiency_id" value={item.id} />
-                    <select name="status" className="tba-input !py-2" defaultValue={item.status}>
-                      <option value="open">Open</option>
-                      <option value="response_prepared">Response prepared</option>
-                      <option value="response_submitted">Response submitted</option>
-                      <option value="resolved">Resolved</option>
-                      <option value="waived">Waived</option>
-                    </select>
-                    <input name="notes" className="tba-input !py-2" defaultValue={item.notes ?? ""} placeholder="Update notes" />
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <select name="status" className="tba-input !py-2" defaultValue={item.status}>
+                        <option value="open">Open</option>
+                        <option value="response_prepared">Response prepared</option>
+                        <option value="response_submitted">Response submitted</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="waived">Waived</option>
+                      </select>
+                      <input name="notes" className="tba-input !py-2" defaultValue={item.notes ?? ""} placeholder="Preparation/submission notes" />
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input name="resolution_notes" className="tba-input !py-2" placeholder="Required when resolving" />
+                      <input name="waiver_reason" className="tba-input !py-2" placeholder="Required when waiving" />
+                    </div>
                     <button type="submit" className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]">
-                      Save
+                      Save deficiency update
                     </button>
                   </form>
                 </div>
