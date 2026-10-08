@@ -227,67 +227,22 @@ export async function generateCaseRequirements(formData: FormData) {
 }
 
 export async function updateRequirementStatus(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const requirementId = value(formData, "requirement_id");
   const status = value(formData, "status");
-  const waiverReason = value(formData, "waiver_reason");
-  const reviewNote = value(formData, "review_note");
 
   if (!caseId || !requirementId || !status) {
     throw new Error("Case, requirement, and status are required.");
   }
 
-  const { data: requirement, error: requirementError } = await supabase
-    .from("case_requirements")
-    .select("requirement_type,completion_value")
-    .eq("id", requirementId)
-    .eq("case_id", caseId)
-    .single();
-
-  if (requirementError || !requirement) {
-    throw new Error("Requirement is not available.");
-  }
-
-  if (
-    ["form", "instruction", "question", "field", "portal", "verification"].includes(requirement.requirement_type) &&
-    ["verified", "completed"].includes(status) &&
-    !reviewNote
-  ) {
-    throw new Error("Add a completion/review note before marking this requirement verified or completed.");
-  }
-
-  const updates: Record<string, unknown> = {
-    status,
-    updated_by: user.id,
-  };
-
-  if (reviewNote) {
-    updates.completion_value = {
-      ...((requirement.completion_value as Record<string, unknown> | null) ?? {}),
-      review_note: reviewNote,
-      reviewed_by: user.id,
-      reviewed_at: new Date().toISOString(),
-    };
-  }
-
-  if (status === "completed") {
-    updates.completed_by = user.id;
-    updates.completed_at = new Date().toISOString();
-  }
-
-  if (status === "waived") {
-    if (!waiverReason) throw new Error("A waiver reason is required.");
-    updates.waived_by = user.id;
-    updates.waived_at = new Date().toISOString();
-    updates.waiver_reason = waiverReason;
-  }
-
-  const { error } = await supabase
-    .from("case_requirements")
-    .update(updates)
-    .eq("id", requirementId)
-    .eq("case_id", caseId);
+  const { error } = await supabase.rpc("transition_case_requirement_status", {
+    p_case_id: caseId,
+    p_requirement_id: requirementId,
+    p_status: status,
+    p_review_note: value(formData, "review_note") || null,
+    p_waiver_reason: value(formData, "waiver_reason") || null,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
