@@ -69,7 +69,7 @@ export default async function EnrollmentCaseDetailPage({
     { data: claimTests },
   ] = await Promise.all([
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
-    supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions))").eq("case_id", id).order("created_at", { ascending: true }),
+    supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions,step_code))").eq("case_id", id).order("created_at", { ascending: true }),
     supabase.from("case_requirements").select("id,requirement_type,title,description,required,status,sequence,source_reason,knowledge_sources(title,url,last_verified_at)").eq("case_id", id).order("sequence"),
     supabase.from("tasks").select("id,title,description,priority,status,due_at,completed_at").eq("case_id", id).order("created_at", { ascending: false }),
     supabase.from("followups").select("id,sequence_number,scheduled_at,completed_at,method,outcome,notes,next_followup_at,escalation_level").eq("case_id", id).order("sequence_number", { ascending: false }),
@@ -484,17 +484,49 @@ export default async function EnrollmentCaseDetailPage({
 
               <span className="capitalize text-sm font-medium text-[#475467]">{step.status.replaceAll("_", " ")}</span>
 
-              <form action={updateWorkflowStep} className="flex gap-2">
+              <form action={updateWorkflowStep} className="grid gap-2">
                 <input type="hidden" name="case_id" value={id} />
                 <input type="hidden" name="step_id" value={step.id} />
                 <select name="status" className="tba-input !py-2" defaultValue={step.status}>
                   <option value="pending">Pending</option>
                   <option value="in_progress">In progress</option>
                   <option value="blocked">Blocked</option>
-                  <option value="completed">Completed</option>
-                  <option value="skipped">Skipped</option>
+                  {![
+                    "verify_nppes",
+                    "resolve_requirements",
+                    "collect_documents",
+                    "readiness_review",
+                    "submit_application",
+                    "capture_confirmation",
+                    "payer_followup",
+                    "resolve_deficiency",
+                    "record_approval",
+                    "contracting",
+                    "effective_date",
+                    "payer_loading",
+                    "directory_verify",
+                    "claims_test",
+                    "era_eft_edi",
+                    "operational_complete",
+                  ].includes(step.workflow_step_definitions?.step_code) ? (
+                    <option value="completed">Completed</option>
+                  ) : null}
+                  {step.workflow_step_definitions?.optional ? <option value="skipped">Skipped</option> : null}
                   <option value="cancelled">Cancelled</option>
                 </select>
+                <input
+                  name="completion_notes"
+                  className="tba-input !py-2"
+                  defaultValue={step.completion_notes ?? ""}
+                  placeholder="Required for blocked or manual completion"
+                />
+                {step.workflow_step_definitions?.optional ? (
+                  <input
+                    name="skipped_reason"
+                    className="tba-input !py-2"
+                    placeholder="Required when skipping"
+                  />
+                ) : null}
                 <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">Save</button>
               </form>
             </div>
