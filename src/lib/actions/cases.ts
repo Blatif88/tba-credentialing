@@ -250,7 +250,7 @@ export async function updateRequirementStatus(formData: FormData) {
 
 
 export async function attachExistingDocumentToRequirement(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const requirementId = value(formData, "requirement_id");
   const documentId = value(formData, "document_id");
@@ -259,56 +259,11 @@ export async function attachExistingDocumentToRequirement(formData: FormData) {
     throw new Error("Case, requirement, and document are required.");
   }
 
-  const { data: requirement, error: requirementError } = await supabase
-    .from("case_requirements")
-    .select("id,case_id,requirement_type")
-    .eq("id", requirementId)
-    .eq("case_id", caseId)
-    .single();
-
-  if (requirementError || !requirement) {
-    throw new Error("Requirement is not available.");
-  }
-
-  if (requirement.requirement_type !== "document") {
-    throw new Error("Only document requirements can receive a document attachment.");
-  }
-
-  const { data: document, error: documentError } = await supabase
-    .from("documents")
-    .select("id")
-    .eq("id", documentId)
-    .is("archived_at", null)
-    .single();
-
-  if (documentError || !document) {
-    throw new Error("Document is not available.");
-  }
-
-  const { error: decisionError } = await supabase.from("document_reuse_decisions").insert({
-    tenant_id: tenantId,
-    document_id: documentId,
-    target_type: "case_requirement",
-    target_id: requirementId,
-    decision: "approved",
-    reason: value(formData, "reuse_reason") || "Approved for reuse on this case requirement.",
-    suggested_by: "user",
-    decided_by: user.id,
-    decided_at: new Date().toISOString(),
-    created_by: user.id,
-    updated_by: user.id,
-  });
-
-  if (decisionError) throw new Error(decisionError.message);
-
-  const { error } = await supabase.from("document_links").insert({
-    tenant_id: tenantId,
-    document_id: documentId,
-    linked_type: "case_requirement",
-    linked_id: requirementId,
-    link_purpose: "supports",
-    status: "active",
-    created_by: user.id,
+  const { error } = await supabase.rpc("approve_document_reuse_for_requirement", {
+    p_case_id: caseId,
+    p_requirement_id: requirementId,
+    p_document_id: documentId,
+    p_reason: value(formData, "reuse_reason") || null,
   });
 
   if (error) throw new Error(error.message);
