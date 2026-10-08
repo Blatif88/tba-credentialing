@@ -146,68 +146,44 @@ export async function updateTaskStatus(formData: FormData) {
 }
 
 export async function scheduleFollowup(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const scheduledAt = value(formData, "scheduled_at");
+  const useDefaultInterval = formData.get("use_default_interval") === "on";
 
-  if (!caseId || !scheduledAt) throw new Error("Case and scheduled date/time are required.");
+  if (!caseId) throw new Error("Case is required.");
+  if (!scheduledAt && !useDefaultInterval) {
+    throw new Error("Choose a scheduled date/time or use the default interval.");
+  }
 
-  const { data: last } = await supabase
-    .from("followups")
-    .select("sequence_number")
-    .eq("case_id", caseId)
-    .order("sequence_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const sequenceNumber = (last?.sequence_number ?? 0) + 1;
-
-  const { error } = await supabase.from("followups").insert({
-    tenant_id: tenantId,
-    case_id: caseId,
-    sequence_number: sequenceNumber,
-    scheduled_at: new Date(scheduledAt).toISOString(),
-    method: value(formData, "method") || null,
-    notes: value(formData, "notes") || null,
-    escalation_level: 0,
-    created_by: user.id,
-    updated_by: user.id,
+  const { error } = await supabase.rpc("schedule_case_followup", {
+    p_case_id: caseId,
+    p_scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+    p_method: value(formData, "method") || "phone",
+    p_notes: value(formData, "notes") || null,
   });
 
   if (error) throw new Error(error.message);
-
-  const { error: caseError } = await supabase
-    .from("enrollment_cases")
-    .update({
-      next_followup_at: new Date(scheduledAt).toISOString(),
-      updated_by: user.id,
-    })
-    .eq("id", caseId);
-
-  if (caseError) throw new Error(caseError.message);
   revalidatePath(casePath(caseId));
 }
 
 export async function completeFollowup(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const followupId = value(formData, "followup_id");
+  const nextFollowupAt = value(formData, "next_followup_at");
+  const scheduleDefaultNext = formData.get("schedule_default_next") === "on";
 
   if (!caseId || !followupId) throw new Error("Case and follow-up are required.");
 
-  const nextFollowupAt = value(formData, "next_followup_at");
-
-  const { error } = await supabase
-    .from("followups")
-    .update({
-      completed_at: new Date().toISOString(),
-      performed_by: user.id,
-      outcome: value(formData, "outcome") || null,
-      notes: value(formData, "notes") || null,
-      next_followup_at: nextFollowupAt ? new Date(nextFollowupAt).toISOString() : null,
-      updated_by: user.id,
-    })
-    .eq("id", followupId);
+  const { error } = await supabase.rpc("complete_case_followup", {
+    p_followup_id: followupId,
+    p_outcome: value(formData, "outcome") || null,
+    p_notes: value(formData, "notes") || null,
+    p_next_followup_at: nextFollowupAt ? new Date(nextFollowupAt).toISOString() : null,
+    p_schedule_default_next: scheduleDefaultNext,
+    p_next_method: value(formData, "next_method") || null,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
