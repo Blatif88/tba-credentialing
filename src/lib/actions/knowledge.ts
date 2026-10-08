@@ -208,3 +208,94 @@ export async function reviewKnowledgeSource(formData: FormData) {
   revalidatePath("/knowledge-review");
   revalidatePath("/payer-programs");
 }
+
+
+export async function reviewPortalResource(formData: FormData) {
+  const { supabase } = await adminContext();
+  const portalId = value(formData, "portal_id");
+  const outcome = value(formData, "outcome");
+  const summary = value(formData, "summary");
+  const reviewedUrl = value(formData, "reviewed_url");
+  const automationLevel = value(formData, "observed_automation_level");
+  const observedMfa = value(formData, "observed_mfa_required");
+  const createProposal = formData.get("create_proposal") === "on";
+
+  if (!portalId || !outcome || !summary) {
+    throw new Error("Portal, review outcome, and summary are required.");
+  }
+
+  const { error } = await supabase.rpc("review_portal_resource", {
+    p_portal_id: portalId,
+    p_outcome: outcome,
+    p_summary: summary,
+    p_reviewed_url: reviewedUrl || null,
+    p_observed_mfa_required: observedMfa ? observedMfa === "true" : null,
+    p_observed_automation_level: automationLevel || null,
+    p_create_proposal: createProposal,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/knowledge-review");
+  revalidatePath("/payer-programs");
+}
+
+export async function updatePortalChangeProposal(formData: FormData) {
+  const { supabase, user, tenantId } = await adminContext();
+  const proposalId = value(formData, "proposal_id");
+
+  if (!proposalId) throw new Error("Portal proposal is required.");
+
+  const { data: proposal, error: proposalError } = await supabase
+    .from("portal_change_proposals")
+    .select("id,status,tenant_id")
+    .eq("id", proposalId)
+    .eq("tenant_id", tenantId)
+    .single();
+
+  if (proposalError || !proposal || proposal.status !== "draft") {
+    throw new Error("Only a tenant draft portal proposal can be edited.");
+  }
+
+  const { error } = await supabase
+    .from("portal_change_proposals")
+    .update({
+      proposed_name: value(formData, "proposed_name"),
+      proposed_url: value(formData, "proposed_url") || null,
+      proposed_purpose: value(formData, "proposed_purpose") || null,
+      proposed_mfa_required: value(formData, "proposed_mfa_required") === "true",
+      proposed_automation_level: value(formData, "proposed_automation_level") || "manual",
+      proposed_instructions: value(formData, "proposed_instructions") || null,
+      proposed_notes: value(formData, "proposed_notes") || null,
+      change_reason: value(formData, "change_reason") || null,
+      updated_by: user.id,
+    })
+    .eq("id", proposalId)
+    .eq("tenant_id", tenantId);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/knowledge-review");
+}
+
+export async function setPortalChangeProposalStatus(formData: FormData) {
+  const { supabase } = await adminContext();
+  const proposalId = value(formData, "proposal_id");
+  const status = value(formData, "status");
+  const changeReason = value(formData, "change_reason");
+
+  if (!proposalId || !status) {
+    throw new Error("Portal proposal and status are required.");
+  }
+
+  const { error } = await supabase.rpc("set_portal_change_proposal_status", {
+    p_proposal_id: proposalId,
+    p_status: status,
+    p_change_reason: changeReason || null,
+  });
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/knowledge-review");
+  revalidatePath("/payer-programs");
+}
