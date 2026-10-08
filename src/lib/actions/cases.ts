@@ -51,32 +51,27 @@ export async function updateCaseStatus(formData: FormData) {
 }
 
 export async function updateWorkflowStep(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const stepId = value(formData, "step_id");
   const status = value(formData, "status");
-  const completionNotes = value(formData, "completion_notes");
 
-  if (!caseId || !stepId || !status) throw new Error("Case, workflow step, and status are required.");
+  if (!caseId || !stepId || !status) {
+    throw new Error("Case, workflow step, and status are required.");
+  }
 
-  const updates: Record<string, unknown> = {
-    status,
-    completion_notes: completionNotes || null,
-    updated_by: user.id,
-  };
-
-  const now = new Date().toISOString();
-  if (status === "in_progress") updates.started_at = now;
-  if (status === "completed") updates.completed_at = now;
-
-  const { error } = await supabase
-    .from("workflow_step_instances")
-    .update(updates)
-    .eq("id", stepId);
+  const { error } = await supabase.rpc("transition_workflow_step", {
+    p_case_id: caseId,
+    p_step_id: stepId,
+    p_status: status,
+    p_completion_notes: value(formData, "completion_notes") || null,
+    p_skipped_reason: value(formData, "skipped_reason") || null,
+  });
 
   if (error) throw new Error(error.message);
   revalidatePath(casePath(caseId));
 }
+
 
 export async function createCaseTask(formData: FormData) {
   const { supabase, user, tenantId } = await context();
