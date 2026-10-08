@@ -206,6 +206,35 @@ export default async function EnrollmentCaseDetailPage({
     is_overdue?: boolean;
   } | null;
 
+  const { data: statusTransitionData } = await supabase.rpc("case_allowed_status_transitions", {
+    p_case_id: id,
+  });
+
+  const statusTransitions = statusTransitionData as {
+    current_status?: string;
+    role?: string;
+    admin_can_override?: boolean;
+    allowed?: Array<{
+      code: string;
+      display_name: string;
+      stage: string;
+      terminal: boolean;
+      transition_group: string;
+      description?: string | null;
+    }>;
+  } | null;
+
+  const allowedStatusTransitions = (statusTransitions?.allowed ?? []).filter(
+    (status) => status.code !== "submitted",
+  );
+
+  const adminOverrideStatuses = (statuses ?? []).filter(
+    (status) =>
+      status.code !== caseRow.status_code &&
+      status.code !== "submitted" &&
+      !allowedStatusTransitions.some((allowed) => allowed.code === status.code),
+  );
+
   const linksByRequirement = new Map<string, any[]>();
   for (const link of documentLinks ?? []) {
     const items = linksByRequirement.get(link.linked_id) ?? [];
@@ -294,28 +323,85 @@ export default async function EnrollmentCaseDetailPage({
             </div>
           ) : null}
 
-          <form action={updateCaseStatus} className="mt-5 space-y-4">
-            <input type="hidden" name="case_id" value={id} />
+          <div className="mt-5 space-y-5">
             <div>
-              <label className="tba-label">Status</label>
-              <select name="status_code" className="tba-input" defaultValue={caseRow.status_code}>
-                {(statuses ?? [])
-                  .filter((status) => status.code !== "submitted")
-                  .map((status) => <option key={status.code} value={status.code}>{status.display_name}</option>)}
-              </select>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">
+                Allowed next statuses
+              </p>
+
+              {allowedStatusTransitions.length ? (
+                <div className="mt-3 grid gap-3">
+                  {allowedStatusTransitions.map((status) => (
+                    <form
+                      key={status.code}
+                      action={updateCaseStatus}
+                      className="rounded-xl border border-[#eaecf0] p-4"
+                    >
+                      <input type="hidden" name="case_id" value={id} />
+                      <input type="hidden" name="status_code" value={status.code} />
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-[#101828]">{status.display_name}</p>
+                          <p className="mt-1 text-xs capitalize text-[#667085]">
+                            {status.transition_group.replaceAll("_", " ")} · {status.stage.replaceAll("_", " ")}
+                          </p>
+                          {status.description ? (
+                            <p className="mt-2 text-sm text-[#667085]">{status.description}</p>
+                          ) : null}
+                        </div>
+                        <SubmitButton
+                          idleLabel={"Move to " + status.display_name}
+                          pendingLabel="Updating..."
+                        />
+                      </div>
+                    </form>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl bg-[#f9fafb] p-4 text-sm text-[#667085]">
+                  No standard manual transition is available from this status. Continue using the workflow actions and milestone controls below.
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="tba-label">Admin override reason</label>
-              <textarea
-                name="override_reason"
-                className="tba-input min-h-20"
-                placeholder="Only used if an organization admin intentionally advances a case despite readiness blockers."
-              />
-            </div>
+            {statusTransitions?.admin_can_override && adminOverrideStatuses.length ? (
+              <details className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                <summary className="cursor-pointer font-semibold text-amber-900">
+                  Administrative status override
+                </summary>
+                <p className="mt-2 text-sm text-amber-900/80">
+                  Use only for a documented exception. This bypasses the normal transition matrix and is written to status history as an administrative override.
+                </p>
 
-            <SubmitButton idleLabel="Update status" pendingLabel="Updating..." />
-          </form>
+                <form action={updateCaseStatus} className="mt-4 space-y-3">
+                  <input type="hidden" name="case_id" value={id} />
+                  <div>
+                    <label className="tba-label">Override destination</label>
+                    <select name="status_code" className="tba-input" required defaultValue="">
+                      <option value="" disabled>Select a status</option>
+                      {adminOverrideStatuses.map((status) => (
+                        <option key={status.code} value={status.code}>
+                          {status.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="tba-label">Override reason</label>
+                    <textarea
+                      name="override_reason"
+                      className="tba-input min-h-20"
+                      placeholder="Document why the normal workflow sequence is being bypassed."
+                      required
+                    />
+                  </div>
+
+                  <SubmitButton idleLabel="Apply administrative override" pendingLabel="Applying..." />
+                </form>
+              </details>
+            ) : null}
+          </div>
         </div>
       </section>
 
