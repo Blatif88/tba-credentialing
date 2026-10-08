@@ -9,6 +9,8 @@ import {
   createCaseContract,
   createCaseDeficiency,
   createCaseTask,
+  assignCaseTask,
+  setCaseTaskEscalation,
   generateCaseRequirements,
   recordCaseMilestone,
   recordCaseSubmission,
@@ -53,6 +55,7 @@ export default async function EnrollmentCaseDetailPage({
     { data: workflows },
     { data: requirements },
     { data: tasks },
+    { data: taskGovernanceData },
     { data: followups },
     { data: notes },
     { data: timeline },
@@ -71,7 +74,8 @@ export default async function EnrollmentCaseDetailPage({
     supabase.from("case_status_definitions").select("code,display_name,stage,terminal,sort_order").eq("active", true).order("sort_order"),
     supabase.from("workflow_instances").select("id,status,started_at,completed_at,workflow_step_instances(id,status,started_at,due_at,completed_at,completion_notes,workflow_step_definitions(name,stage,sequence,optional,instructions,step_code))").eq("case_id", id).order("created_at", { ascending: true }),
     supabase.from("case_requirements").select("id,requirement_type,title,description,required,status,sequence,source_reason,knowledge_sources(title,url,last_verified_at)").eq("case_id", id).order("sequence"),
-    supabase.from("tasks").select("id,title,description,priority,status,due_at,completed_at").eq("case_id", id).order("created_at", { ascending: false }),
+    supabase.from("tasks").select("id,title,description,priority,status,due_at,completed_at,completion_notes,assigned_user_id,started_at,blocked_reason,cancelled_at,cancellation_reason,escalation_level,escalated_at,escalation_reason").eq("case_id", id).order("created_at", { ascending: false }),
+    supabase.rpc("case_task_governance_context", { p_case_id: id }),
     supabase.from("followups").select("id,sequence_number,scheduled_at,completed_at,method,outcome,notes,next_followup_at,escalation_level").eq("case_id", id).order("sequence_number", { ascending: false }),
     supabase.from("notes").select("id,category,body,created_at").eq("subject_type", "case").eq("subject_id", id).order("created_at", { ascending: false }),
     supabase.from("timeline_events").select("id,event_type,title,description,occurred_at,metadata").eq("case_id", id).order("occurred_at", { ascending: false }),
@@ -196,6 +200,17 @@ export default async function EnrollmentCaseDetailPage({
   const { data: followupPolicyData } = await supabase.rpc("case_followup_policy", {
     p_case_id: id,
   });
+
+  const taskGovernance = taskGovernanceData as {
+    current_user_id?: string;
+    role?: string;
+    can_manage_assignments?: boolean;
+    members?: Array<{
+      user_id: string;
+      role_key: string;
+      display_name: string;
+    }>;
+  } | null;
 
   const followupPolicy = followupPolicyData as {
     interval_days?: number;
@@ -720,42 +735,161 @@ export default async function EnrollmentCaseDetailPage({
         </div>
 
         <div className="tba-card p-6">
-          <h2 className="text-lg font-semibold">Create task</h2>
+          <h2 className="text-lg font-semibold">Tasks</h2>
+          <p className="mt-1 text-sm text-[#667085]">
+            Governed case work with assignment, escalation, blocked reasons, and completion evidence.
+          </p>
+
           <form action={createCaseTask} className="mt-5 grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="case_id" value={id} />
-            <div className="sm:col-span-2"><label className="tba-label">Task</label><input name="title" className="tba-input" required /></div>
-            <div><label className="tba-label">Priority</label><select name="priority" className="tba-input" defaultValue="normal"><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></div>
-            <div><label className="tba-label">Due</label><input name="due_at" type="datetime-local" className="tba-input" /></div>
-            <div className="sm:col-span-2"><label className="tba-label">Description</label><textarea name="description" className="tba-input min-h-24" /></div>
-            <div className="sm:col-span-2"><SubmitButton idleLabel="Create task" pendingLabel="Creating task..." /></div>
+            <div className="sm:col-span-2">
+              <label className="tba-label">Task</label>
+              <input name="title" className="tba-input" required />
+            </div>
+            <div>
+              <label className="tba-label">Priority</label>
+              <select name="priority" className="tba-input" defaultValue="normal">
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div>
+              <label className="tba-label">Due</label>
+              <input name="due_at" type="datetime-local" className="tba-input" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="tba-label">Description</label>
+              <textarea name="description" className="tba-input min-h-24" />
+            </div>
+            <div className="sm:col-span-2">
+              <SubmitButton idleLabel="Create task" pendingLabel="Creating task..." />
+            </div>
           </form>
 
           <div className="mt-6 border-t border-[#eaecf0] pt-5">
             <h3 className="font-semibold">Case tasks</h3>
-            <div className="mt-3 grid gap-3">
-              {(tasks ?? []).length ? tasks!.map((task) => (
-                <div key={task.id} className="rounded-xl border border-[#eaecf0] p-4">
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{task.title}</p>
-                      <p className="mt-1 text-xs capitalize text-[#667085]">{task.priority} · {task.status.replaceAll("_", " ")}{task.due_at ? " · due " + new Date(task.due_at).toLocaleString() : ""}</p>
+            <div className="mt-3 grid gap-4">
+              {(tasks ?? []).length ? tasks!.map((task) => {
+                const overdue = !!task.due_at
+                  && !["completed", "cancelled"].includes(task.status)
+                  && new Date(task.due_at).getTime() < Date.now();
+
+                const assignee = (taskGovernance?.members ?? []).find(
+                  (member) => member.user_id === task.assigned_user_id,
+                );
+
+                const canSelfManage = ["credentialing_specialist", "reviewer"].includes(taskGovernance?.role ?? "")
+                  && (!task.assigned_user_id || task.assigned_user_id === taskGovernance?.current_user_id);
+
+                const canManageAssignment = !!taskGovernance?.can_manage_assignments || canSelfManage;
+
+                return (
+                  <div key={task.id} className="rounded-xl border border-[#eaecf0] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium">{task.title}</p>
+                        <p className="mt-1 text-xs capitalize text-[#667085]">
+                          {task.priority} · {task.status.replaceAll("_", " ")}
+                          {task.due_at ? " · due " + new Date(task.due_at).toLocaleString() : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-[#667085]">
+                          Assigned to: {assignee?.display_name ?? (task.assigned_user_id ? "Tenant member" : "Unassigned")}
+                          {task.escalation_level ? " · escalation level " + task.escalation_level : ""}
+                        </p>
+                      </div>
+                      {overdue ? (
+                        <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Overdue</span>
+                      ) : task.escalation_level ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
+                          Escalated L{task.escalation_level}
+                        </span>
+                      ) : null}
                     </div>
-                    <form action={updateTaskStatus}>
-                      <input type="hidden" name="case_id" value={id} />
-                      <input type="hidden" name="task_id" value={task.id} />
-                      <select name="status" className="tba-input !py-2" defaultValue={task.status}>
-                        <option value="open">Open</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="blocked">Blocked</option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                      <button className="mt-2 w-full rounded-lg border border-[#d0d5dd] px-2 py-1 text-xs font-semibold">Save</button>
-                    </form>
+
+                    {task.description ? <p className="mt-3 text-sm text-[#667085]">{task.description}</p> : null}
+                    {task.blocked_reason ? <p className="mt-2 text-sm text-amber-800">Blocked: {task.blocked_reason}</p> : null}
+                    {task.completion_notes ? <p className="mt-2 text-sm text-emerald-800">Completed: {task.completion_notes}</p> : null}
+                    {task.cancellation_reason ? <p className="mt-2 text-sm text-[#667085]">Cancelled: {task.cancellation_reason}</p> : null}
+                    {task.escalation_reason ? <p className="mt-2 text-xs text-[#667085]">Escalation: {task.escalation_reason}</p> : null}
+
+                    {!["completed", "cancelled"].includes(task.status) ? (
+                      <div className="mt-4 grid gap-3">
+                        <form action={updateTaskStatus} className="grid gap-2">
+                          <input type="hidden" name="case_id" value={id} />
+                          <input type="hidden" name="task_id" value={task.id} />
+                          <select name="status" className="tba-input !py-2" defaultValue={task.status}>
+                            <option value="open">Open</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="completed">Completed</option>
+                            {["organization_admin", "credentialing_manager"].includes(taskGovernance?.role ?? "") ? (
+                              <option value="cancelled">Cancelled</option>
+                            ) : null}
+                          </select>
+                          <input name="completion_notes" className="tba-input !py-2" placeholder="Required when completing" />
+                          <input name="blocked_reason" className="tba-input !py-2" placeholder="Required when blocking" />
+                          {["organization_admin", "credentialing_manager"].includes(taskGovernance?.role ?? "") ? (
+                            <input name="cancellation_reason" className="tba-input !py-2" placeholder="Required when cancelling" />
+                          ) : null}
+                          <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">
+                            Update task
+                          </button>
+                        </form>
+
+                        {canManageAssignment ? (
+                          <form action={assignCaseTask} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                            <input type="hidden" name="case_id" value={id} />
+                            <input type="hidden" name="task_id" value={task.id} />
+                            <select name="assigned_user_id" className="tba-input !py-2" defaultValue={task.assigned_user_id ?? ""}>
+                              <option value="">Unassigned</option>
+                              {(taskGovernance?.members ?? []).map((member) => (
+                                <option key={member.user_id} value={member.user_id}>
+                                  {member.display_name} · {member.role_key.replaceAll("_", " ")}
+                                </option>
+                              ))}
+                            </select>
+                            <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">
+                              Assign
+                            </button>
+                          </form>
+                        ) : null}
+
+                        <form action={setCaseTaskEscalation} className="grid gap-2 sm:grid-cols-[130px_1fr_auto]">
+                          <input type="hidden" name="case_id" value={id} />
+                          <input type="hidden" name="task_id" value={task.id} />
+                          <select name="escalation_level" className="tba-input !py-2" defaultValue={String(task.escalation_level ?? 0)}>
+                            <option value="0">Level 0</option>
+                            <option value="1">Level 1</option>
+                            <option value="2">Level 2</option>
+                            <option value="3">Level 3</option>
+                          </select>
+                          <input name="escalation_reason" className="tba-input !py-2" placeholder="Reason required" required />
+                          <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">
+                            Escalate
+                          </button>
+                        </form>
+                      </div>
+                    ) : (
+                      ["organization_admin", "credentialing_manager"].includes(taskGovernance?.role ?? "") ? (
+                        <form action={updateTaskStatus} className="mt-4 grid gap-2 sm:grid-cols-[180px_1fr_auto]">
+                          <input type="hidden" name="case_id" value={id} />
+                          <input type="hidden" name="task_id" value={task.id} />
+                          <select name="status" className="tba-input !py-2" defaultValue="open">
+                            <option value="open">Reopen</option>
+                            <option value="in_progress">Reopen in progress</option>
+                          </select>
+                          <input name="reopen_reason" className="tba-input !py-2" placeholder="Reopen reason required" required />
+                          <button className="rounded-lg border border-[#d0d5dd] px-3 py-2 text-sm font-semibold hover:bg-[#f9fafb]" type="submit">
+                            Reopen
+                          </button>
+                        </form>
+                      ) : null
+                    )}
                   </div>
-                  {task.description ? <p className="mt-3 text-sm text-[#667085]">{task.description}</p> : null}
-                </div>
-              )) : <p className="text-sm text-[#667085]">No tasks yet.</p>}
+                );
+              }) : <p className="text-sm text-[#667085]">No tasks yet.</p>}
             </div>
           </div>
         </div>
