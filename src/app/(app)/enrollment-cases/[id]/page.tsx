@@ -75,13 +75,9 @@ export default async function EnrollmentCaseDetailPage({
     supabase.from("notes").select("id,category,body,created_at").eq("subject_type", "case").eq("subject_id", id).order("created_at", { ascending: false }),
     supabase.from("timeline_events").select("id,event_type,title,description,occurred_at,metadata").eq("case_id", id).order("occurred_at", { ascending: false }),
     supabase.from("case_locations").select("id,included,locations(name,address_line_1,address_line_2,city,state,zip)").eq("case_id", id),
-    supabase
-      .from("portals")
-      .select("id,name,portal_url,purpose,instructions,notes,mfa_required,automation_level,last_verified_at")
-      .eq("payer_offering_id", caseRow.payer_offering_id)
-      .or("state.is.null,state.eq." + caseRow.state)
-      .eq("status", "active")
-      .order("name"),
+    supabase.rpc("case_portal_resources", {
+      p_case_id: id,
+    }),
     (caseRow as any).credentialing_projects?.client_id
       ? supabase
           .from("documents")
