@@ -74,43 +74,20 @@ export async function updateWorkflowStep(formData: FormData) {
 
 
 export async function createCaseTask(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const title = value(formData, "title");
+  const dueAt = value(formData, "due_at");
 
   if (!caseId || !title) throw new Error("Case and task title are required.");
 
-  const { data: caseRow, error: caseError } = await supabase
-    .from("enrollment_cases")
-    .select("provider_id,project_id")
-    .eq("id", caseId)
-    .single();
-
-  if (caseError || !caseRow) throw new Error("Case is not available.");
-
-  const { data: project } = await supabase
-    .from("credentialing_projects")
-    .select("client_id")
-    .eq("id", caseRow.project_id)
-    .single();
-
-  const dueAt = value(formData, "due_at");
-
-  const { error } = await supabase.from("tasks").insert({
-    tenant_id: tenantId,
-    case_id: caseId,
-    client_id: project?.client_id ?? null,
-    provider_id: caseRow.provider_id ?? null,
-    title,
-    description: value(formData, "description") || null,
-    task_type: value(formData, "task_type") || "case_work",
-    source_type: "manual",
-    assigned_user_id: user.id,
-    priority: value(formData, "priority") || "normal",
-    status: "open",
-    due_at: dueAt ? new Date(dueAt).toISOString() : null,
-    created_by: user.id,
-    updated_by: user.id,
+  const { error } = await supabase.rpc("create_case_task", {
+    p_case_id: caseId,
+    p_title: title,
+    p_description: value(formData, "description") || null,
+    p_task_type: value(formData, "task_type") || "case_work",
+    p_priority: value(formData, "priority") || "normal",
+    p_due_at: dueAt ? new Date(dueAt).toISOString() : null,
   });
 
   if (error) throw new Error(error.message);
@@ -119,26 +96,70 @@ export async function createCaseTask(formData: FormData) {
 }
 
 export async function updateTaskStatus(formData: FormData) {
-  const { supabase, user } = await context();
+  const { supabase } = await context();
   const caseId = value(formData, "case_id");
   const taskId = value(formData, "task_id");
   const status = value(formData, "status");
 
-  if (!caseId || !taskId || !status) throw new Error("Case, task, and status are required.");
+  if (!caseId || !taskId || !status) {
+    throw new Error("Case, task, and status are required.");
+  }
 
-  const updates: Record<string, unknown> = {
-    status,
-    updated_by: user.id,
-  };
+  const { error } = await supabase.rpc("transition_case_task", {
+    p_case_id: caseId,
+    p_task_id: taskId,
+    p_status: status,
+    p_completion_notes: value(formData, "completion_notes") || null,
+    p_blocked_reason: value(formData, "blocked_reason") || null,
+    p_cancellation_reason: value(formData, "cancellation_reason") || null,
+    p_reopen_reason: value(formData, "reopen_reason") || null,
+  });
 
-  if (status === "completed") updates.completed_at = new Date().toISOString();
-
-  const { error } = await supabase.from("tasks").update(updates).eq("id", taskId);
   if (error) throw new Error(error.message);
-
   revalidatePath(casePath(caseId));
   revalidatePath("/today");
 }
+
+export async function assignCaseTask(formData: FormData) {
+  const { supabase } = await context();
+  const caseId = value(formData, "case_id");
+  const taskId = value(formData, "task_id");
+  const assigneeId = value(formData, "assigned_user_id");
+
+  if (!caseId || !taskId) throw new Error("Case and task are required.");
+
+  const { error } = await supabase.rpc("assign_case_task", {
+    p_task_id: taskId,
+    p_assigned_user_id: assigneeId || null,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/today");
+}
+
+export async function setCaseTaskEscalation(formData: FormData) {
+  const { supabase } = await context();
+  const caseId = value(formData, "case_id");
+  const taskId = value(formData, "task_id");
+  const level = Number(value(formData, "escalation_level"));
+  const reason = value(formData, "escalation_reason");
+
+  if (!caseId || !taskId || !Number.isInteger(level) || !reason) {
+    throw new Error("Case, task, escalation level, and reason are required.");
+  }
+
+  const { error } = await supabase.rpc("set_case_task_escalation", {
+    p_task_id: taskId,
+    p_escalation_level: level,
+    p_reason: reason,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/today");
+}
+
 
 export async function scheduleFollowup(formData: FormData) {
   const { supabase } = await context();
