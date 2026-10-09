@@ -47,6 +47,51 @@ export async function createClientRecord(formData: FormData) {
   revalidatePath("/clients");
 }
 
+export async function updateClientRecord(formData: FormData) {
+  const { supabase, user, tenantId } = await context();
+  const id = value(formData, "client_id");
+  const name = value(formData, "name");
+  const clientType = value(formData, "client_type");
+  const status = value(formData, "status");
+  const email = value(formData, "primary_contact_email");
+
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    throw new Error("A valid client is required.");
+  }
+  if (!name || name.length > 200) throw new Error("Client name must be between 1 and 200 characters.");
+  if (!["individual", "group", "company", "facility", "other"].includes(clientType)) {
+    throw new Error("Select a valid client type.");
+  }
+  if (!["prospect", "onboarding", "active", "inactive"].includes(status)) {
+    throw new Error("Select a valid client status.");
+  }
+  if (email && (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) {
+    throw new Error("Enter a valid contact email address.");
+  }
+
+  const { data, error } = await supabase
+    .from("clients")
+    .update({
+      name,
+      client_type: clientType,
+      status,
+      primary_contact_name: value(formData, "primary_contact_name") || null,
+      primary_contact_email: email || null,
+      primary_contact_phone: value(formData, "primary_contact_phone") || null,
+      updated_by: user.id,
+    })
+    .eq("id", id)
+    .eq("tenant_id", tenantId)
+    .is("archived_at", null)
+    .select("id")
+    .single();
+
+  if (error || !data) throw new Error(error?.message ?? "This client is not available for editing.");
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${id}`);
+}
+
 export async function createOrganizationRecord(formData: FormData) {
   const { supabase, user, tenantId } = await context();
   const legalName = value(formData, "legal_name");
