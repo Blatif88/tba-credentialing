@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
-import { SubmitButton } from "@/components/submit-button";
+import { CreateClientForm } from "@/components/intake/duplicate-aware-forms";
 import { createClient } from "@/lib/supabase/server";
-import { createClientRecord } from "@/lib/actions/intake";
+
 
 export default async function ClientsPage() {
   const supabase = await createClient();
@@ -26,37 +26,7 @@ export default async function ClientsPage() {
           Start the intake record here, then attach organizations, providers, locations, and projects.
         </p>
 
-        <form action={createClientRecord} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <div className="xl:col-span-2">
-            <label className="tba-label">Client name</label>
-            <input name="name" className="tba-input" required />
-          </div>
-          <div>
-            <label className="tba-label">Client type</label>
-            <select name="client_type" className="tba-input" defaultValue="group">
-              <option value="individual">Individual</option>
-              <option value="group">Group</option>
-              <option value="company">Company</option>
-              <option value="facility">Facility</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div>
-            <label className="tba-label">Primary contact</label>
-            <input name="primary_contact_name" className="tba-input" />
-          </div>
-          <div>
-            <label className="tba-label">Contact email</label>
-            <input name="primary_contact_email" type="email" className="tba-input" />
-          </div>
-          <div>
-            <label className="tba-label">Contact phone</label>
-            <input name="primary_contact_phone" className="tba-input" />
-          </div>
-          <div className="md:col-span-2 xl:col-span-5">
-            <SubmitButton idleLabel="Create client" pendingLabel="Creating client..." />
-          </div>
-        </form>
+        <CreateClientForm existing={(clients ?? []).map(({ id, name }) => ({ id, name }))} />
       </section>
 
       <div className="tba-card overflow-hidden">
