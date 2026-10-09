@@ -131,9 +131,9 @@ export default async function TodayPage({
 
   const summaries = new Map<string, CaseSummary>();
   for (const row of cases ?? []) {
-    const provider = row.providers as { first_name?: string; last_name?: string } | null;
-    const organization = row.organizations as { legal_name?: string } | null;
-    const payer = row.payer_organizations as { display_name?: string } | null;
+    const provider = (Array.isArray(row.providers) ? row.providers[0] : row.providers) as { first_name?: string; last_name?: string } | null;
+    const organization = (Array.isArray(row.organizations) ? row.organizations[0] : row.organizations) as { legal_name?: string } | null;
+    const payer = (Array.isArray(row.payer_organizations) ? row.payer_organizations[0] : row.payer_organizations) as { display_name?: string } | null;
     summaries.set(row.id, {
       label: [provider?.first_name, provider?.last_name].filter(Boolean).join(" ") || organization?.legal_name || "Enrollment case",
       payer: payer?.display_name || row.state || "Payer not set",
@@ -160,7 +160,7 @@ export default async function TodayPage({
     detail: (followup.method || "Follow-up").replaceAll("_", " "),
     caseId: followup.case_id,
     dueAt: followup.scheduled_at,
-    priority: followup.escalation_level > 0 ? "high" : "normal",
+    priority: (followup.escalation_level ?? 0) > 0 ? "high" : "normal",
     status: "scheduled",
     escalationLevel: followup.escalation_level || 0,
   }));
