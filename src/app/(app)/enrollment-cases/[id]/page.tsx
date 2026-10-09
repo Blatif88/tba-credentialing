@@ -1197,7 +1197,8 @@ export default async function EnrollmentCaseDetailPage({
 
             <div>
               <label className="tba-label">Milestone</label>
-              <select name="milestone_code" className="tba-input" defaultValue="submission_confirmation" required>
+              <select name="milestone_code" className="tba-input" defaultValue="" required>
+                <option value="" disabled>Select a milestone...</option>
                 <option value="submission_confirmation">Submission confirmation</option>
                 <option value="credentialing_approval">Credentialing approval</option>
                 <option value="effective_date">Effective date</option>
@@ -1231,6 +1232,7 @@ export default async function EnrollmentCaseDetailPage({
 
             <div>
               <label className="tba-label">Related submission</label>
+              <p className="mb-1 text-xs text-[#667085]">Required for Submission confirmation. Not required for Effective date.</p>
               <select name="submission_id" className="tba-input" defaultValue="">
                 <option value="">No specific submission</option>
                 {(submissions ?? []).map((submission) => (
