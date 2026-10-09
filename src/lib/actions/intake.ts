@@ -130,7 +130,7 @@ export async function updateClientRecord(formData: FormData) {
   if (!["prospect", "onboarding", "active", "inactive"].includes(status)) {
     throw new Error("Select a valid client status.");
   }
-  if (email && (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) {
+  if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     throw new Error("Enter a valid contact email address.");
   }
 
