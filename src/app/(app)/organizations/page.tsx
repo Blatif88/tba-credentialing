@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
-import { SubmitButton } from "@/components/submit-button";
+import { CreateOrganizationForm } from "@/components/intake/duplicate-aware-forms";
 import { createClient } from "@/lib/supabase/server";
-import { createOrganizationRecord } from "@/lib/actions/intake";
+
 
 export default async function OrganizationsPage() {
   const supabase = await createClient();
@@ -9,7 +9,7 @@ export default async function OrganizationsPage() {
   const [{ data: organizations }, { data: clients }] = await Promise.all([
     supabase
       .from("organizations")
-      .select("id,legal_name,dba_name,organization_type,entity_npi,status,nppes_verification_status")
+      .select("id,client_id,legal_name,dba_name,organization_type,entity_npi,status,nppes_verification_status")
       .is("archived_at", null)
       .order("legal_name"),
     supabase.from("clients").select("id,name").is("archived_at", null).order("name"),
@@ -29,36 +29,7 @@ export default async function OrganizationsPage() {
           Create the legal entity that providers, locations, and payer enrollment work belong to.
         </p>
 
-        <form action={createOrganizationRecord} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <div className="xl:col-span-2">
-            <label className="tba-label">Legal name</label>
-            <input name="legal_name" className="tba-input" required />
-          </div>
-          <div>
-            <label className="tba-label">DBA</label>
-            <input name="dba_name" className="tba-input" />
-          </div>
-          <div>
-            <label className="tba-label">Organization type</label>
-            <input name="organization_type" className="tba-input" placeholder="Group, Home Health..." />
-          </div>
-          <div>
-            <label className="tba-label">Entity NPI</label>
-            <input name="entity_npi" className="tba-input" inputMode="numeric" pattern="[0-9]{10}" />
-          </div>
-          <div className="xl:col-span-2">
-            <label className="tba-label">Client</label>
-            <select name="client_id" className="tba-input" defaultValue="">
-              <option value="">No client selected</option>
-              {(clients ?? []).map((client) => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2 xl:col-span-5">
-            <SubmitButton idleLabel="Create organization" pendingLabel="Creating organization..." />
-          </div>
-        </form>
+        <CreateOrganizationForm existing={(organizations ?? []).map(({ id, legal_name, entity_npi, client_id }) => ({ id, legal_name, entity_npi, client_id }))} clients={clients ?? []} />
       </section>
 
       <div className="tba-card overflow-hidden">
