@@ -13,6 +13,7 @@ import {
   setCaseTaskEscalation,
   generateCaseRequirements,
   recordCaseMilestone,
+  recordActivationChannel,
   recordCaseSubmission,
   recordClaimTest,
   recordDirectoryVerification,
@@ -196,6 +197,25 @@ export default async function EnrollmentCaseDetailPage({
       eft_complete?: boolean;
       edi_complete?: boolean;
     };
+  } | null;
+
+  const { data: activationChannelsData } = await supabase.rpc("case_activation_channel_snapshot", {
+    p_case_id: id,
+  });
+
+  const activationChannels = activationChannelsData as {
+    case_status?: string;
+    operational_complete?: boolean;
+    all_satisfied?: boolean;
+    fully_activated?: boolean;
+    channels?: Array<{
+      channel: string;
+      satisfied: boolean;
+      outcome: string;
+      occurred_at?: string | null;
+      reference_number?: string | null;
+      notes?: string | null;
+    }>;
   } | null;
 
   const { data: followupPolicyData } = await supabase.rpc("case_followup_policy", {
@@ -1182,9 +1202,6 @@ export default async function EnrollmentCaseDetailPage({
                 <option value="credentialing_approval">Credentialing approval</option>
                 <option value="effective_date">Effective date</option>
                 <option value="payer_loaded">Payer loaded</option>
-                <option value="era_complete">ERA complete</option>
-                <option value="eft_complete">EFT complete</option>
-                <option value="edi_complete">EDI complete</option>
                 {activationReadiness?.ready_for_operational_completion ? (
                   <option value="operational_complete">Operational complete</option>
                 ) : null}
@@ -1447,18 +1464,24 @@ export default async function EnrollmentCaseDetailPage({
           </div>
 
           <div className="rounded-xl border border-[#eaecf0] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">Optional activation</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
-                ERA {activationReadiness?.optional_activation?.era_complete ? "complete" : "pending"}
-              </span>
-              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
-                EFT {activationReadiness?.optional_activation?.eft_complete ? "complete" : "pending"}
-              </span>
-              <span className="rounded-full bg-[#f2f4f7] px-2 py-1">
-                EDI {activationReadiness?.optional_activation?.edi_complete ? "complete" : "pending"}
-              </span>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#667085]">ERA / EFT / EDI activation</p>
+            <p className="mt-2 text-sm text-[#344054]">
+              {activationChannels?.fully_activated
+                ? "Fully activated — all three channels satisfied."
+                : activationChannels?.operational_complete
+                  ? "Operationally complete — record each remaining channel below."
+                  : "Complete operational readiness first; channel records are locked until then."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {(activationChannels?.channels ?? []).map((channel) => (
+                <span key={channel.channel} className="rounded-full bg-[#f2f4f7] px-2 py-1 capitalize">
+                  {channel.channel.toUpperCase()} {channel.outcome.replaceAll("_", " ")}
+                </span>
+              ))}
             </div>
+            <a href="#activation-channels" className="mt-3 inline-block text-xs font-semibold text-[#175cd3] underline underline-offset-2">
+              Open activation channels
+            </a>
           </div>
         </div>
 
@@ -1472,6 +1495,64 @@ export default async function EnrollmentCaseDetailPage({
             </ul>
           </div>
         ) : null}
+      </section>
+
+      <section id="activation-channels" className="tba-card mb-6 scroll-mt-6 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">ERA / EFT / EDI activation channels</h2>
+            <p className="mt-1 text-sm text-[#667085]">
+              Each channel needs evidence of completion or an explicit not-applicable explanation.
+              All three must be satisfied before the case becomes fully activated.
+            </p>
+          </div>
+          <span className="rounded-full bg-[#f2f4f7] px-3 py-1 text-xs font-semibold text-[#475467]">
+            {activationChannels?.fully_activated
+              ? "Fully activated"
+              : activationChannels?.operational_complete
+                ? "Channel work pending"
+                : "Awaiting operational completion"}
+          </span>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          {(["era", "eft", "edi"] as const).map((channelCode) => {
+            const channel = activationChannels?.channels?.find((row) => row.channel === channelCode);
+            const satisfied = !!channel?.satisfied;
+            return (
+              <div key={channelCode} className="rounded-xl border border-[#eaecf0] p-4">
+                <p className="font-semibold uppercase">{channelCode}</p>
+                <p className="mt-1 text-sm capitalize text-[#667085]">
+                  {channel?.outcome?.replaceAll("_", " ") ?? "Pending"}
+                </p>
+                {channel?.occurred_at ? <p className="mt-1 text-xs text-[#667085]">{fmt(channel.occurred_at)}</p> : null}
+                {channel?.reference_number ? <p className="mt-2 text-sm text-[#667085]">Reference: {channel.reference_number}</p> : null}
+                {channel?.notes ? <p className="mt-1 whitespace-pre-wrap text-sm text-[#667085]">{channel.notes}</p> : null}
+                {!satisfied && activationChannels?.operational_complete ? (
+                  <form action={recordActivationChannel} className="mt-4 grid gap-2">
+                    <input type="hidden" name="case_id" value={id} />
+                    <input type="hidden" name="channel" value={channelCode} />
+                    <label className="tba-label">Outcome</label>
+                    <select name="outcome" className="tba-input !py-2" defaultValue="completed">
+                      <option value="completed">Completed</option>
+                      <option value="not_applicable">Not applicable</option>
+                    </select>
+                    <label className="tba-label">Date/time</label>
+                    <input type="datetime-local" name="occurred_at" className="tba-input !py-2" required />
+                    <label className="tba-label">Reference (or evidence note below)</label>
+                    <input name="reference_number" className="tba-input !py-2" />
+                    <label className="tba-label">Evidence note / not-applicable explanation</label>
+                    <textarea name="notes" className="tba-input min-h-20" placeholder="Required for Not applicable" />
+                    <SubmitButton idleLabel={`Record ${channelCode.toUpperCase()}`} pendingLabel="Recording..." />
+                  </form>
+                ) : satisfied ? (
+                  <p className="mt-4 text-xs font-semibold text-emerald-700">Satisfied</p>
+                ) : (
+                  <p className="mt-4 text-xs text-[#667085]">Locked until operational completion.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <section className="mb-6 grid gap-6 xl:grid-cols-3">
