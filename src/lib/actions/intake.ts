@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { matchingClient, matchingOrganization, type ExistingClient, type ExistingOrganization } from "@/lib/record-duplicates";
 
 async function context() {
   const supabase = await createClient();
@@ -26,12 +27,75 @@ function value(formData: FormData, key: string) {
   return raw === null ? "" : String(raw).trim();
 }
 
-export async function createClientRecord(formData: FormData) {
-  const { supabase, user, tenantId } = await context();
-  const name = value(formData, "name");
-  if (!name) throw new Error("Client name is required.");
+export type CreationFeedback = {
+  status: "idle" | "error" | "success";
+  message: string;
+  recordId?: string;
+};
 
-  const { error } = await supabase.from("clients").insert({
+const PAGE_SIZE = 500;
+
+// Enumerate active records within the selected tenant so matching is consistent
+// with the form's case, punctuation and whitespace normalization. Fail closed.
+async function activeClients(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+): Promise<ExistingClient[]> {
+  const all: ExistingClient[] = [];
+  for (let from = 0; from < 25000; from += PAGE_SIZE) {
+    const { data, error } = await supabase.from("clients")
+      .select("id,name")
+      .eq("tenant_id", tenantId)
+      .is("archived_at", null)
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error || !data) throw new Error("Cannot verify existing clients. Please try again.");
+    all.push(...data);
+    if (data.length < PAGE_SIZE) return all;
+  }
+  throw new Error("The client directory is too large to safely verify duplicates.");
+}
+
+async function activeOrganizations(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  tenantId: string,
+): Promise<ExistingOrganization[]> {
+  const all: ExistingOrganization[] = [];
+  for (let from = 0; from < 25000; from += PAGE_SIZE) {
+    const { data, error } = await supabase.from("organizations")
+      .select("id,legal_name,entity_npi,client_id")
+      .eq("tenant_id", tenantId)
+      .is("archived_at", null)
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error || !data) throw new Error("Cannot verify existing organizations. Please try again.");
+    all.push(...data);
+    if (data.length < PAGE_SIZE) return all;
+  }
+  throw new Error("The organization directory is too large to safely verify duplicates.");
+}
+
+export async function createClientRecord(
+  _previous: CreationFeedback,
+  formData: FormData,
+): Promise<CreationFeedback> {
+  const { supabase, user, tenantId } = await context();
+  const name = value(formData, "name").replace(/\\s+/g, " ");
+  if (!name || name.length > 200) {
+    return { status: "error", message: "Enter a client name (200 characters maximum)." };
+  }
+
+  let existing: ExistingClient | undefined;
+  try {
+    existing = matchingClient(await activeClients(supabase, tenantId), name);
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Unable to check for duplicates." };
+  }
+  if (existing) {
+    return { status: "error", message: "Client already exists: " + existing.name + ". Open the existing client instead.", recordId: existing.id };
+  }
+
+  const { data, error } = await supabase.from("clients").insert({
     tenant_id: tenantId,
     name,
     client_type: value(formData, "client_type") || "group",
@@ -41,10 +105,11 @@ export async function createClientRecord(formData: FormData) {
     primary_contact_phone: value(formData, "primary_contact_phone") || null,
     created_by: user.id,
     updated_by: user.id,
-  });
+  }).select("id").single();
 
-  if (error) throw new Error(error.message);
+  if (error || !data) return { status: "error", message: "Client could not be created. Check your access or refresh the page." };
   revalidatePath("/clients");
+  return { status: "success", message: "Client created successfully.", recordId: data.id };
 }
 
 export async function updateClientRecord(formData: FormData) {
@@ -67,6 +132,11 @@ export async function updateClientRecord(formData: FormData) {
   }
   if (email && (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))) {
     throw new Error("Enter a valid contact email address.");
+  }
+
+  const existing = matchingClient(await activeClients(supabase, tenantId), name, id);
+  if (existing) {
+    throw new Error("A different client already uses this name: " + existing.name + ". Edit the existing client instead.");
   }
 
   const { data, error } = await supabase
@@ -92,27 +162,58 @@ export async function updateClientRecord(formData: FormData) {
   revalidatePath(`/clients/${id}`);
 }
 
-export async function createOrganizationRecord(formData: FormData) {
+export async function createOrganizationRecord(
+  _previous: CreationFeedback,
+  formData: FormData,
+): Promise<CreationFeedback> {
   const { supabase, user, tenantId } = await context();
-  const legalName = value(formData, "legal_name");
-  if (!legalName) throw new Error("Legal name is required.");
-
+  const legalName = value(formData, "legal_name").replace(/\\s+/g, " ");
   const npi = value(formData, "entity_npi");
-  if (npi && !/^\d{10}$/.test(npi)) throw new Error("Organization NPI must contain exactly 10 digits.");
+  const clientId = value(formData, "client_id");
 
-  const { error } = await supabase.from("organizations").insert({
+  if (!legalName || legalName.length > 250) {
+    return { status: "error", message: "Enter an organization name (250 characters maximum)." };
+  }
+  if (npi && !/^\\d{10}$/.test(npi)) {
+    return { status: "error", message: "Organization NPI must contain exactly 10 digits." };
+  }
+  if (clientId) {
+    const { data: client, error: clientError } = await supabase.from("clients")
+      .select("id").eq("id", clientId).eq("tenant_id", tenantId)
+      .is("archived_at", null).maybeSingle();
+    if (clientError || !client) {
+      return { status: "error", message: "The selected client is unavailable. Choose an existing client." };
+    }
+  }
+
+  let existing: ReturnType<typeof matchingOrganization>;
+  try {
+    existing = matchingOrganization(await activeOrganizations(supabase, tenantId), legalName, npi);
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Unable to check for duplicates." };
+  }
+  if (existing) {
+    const message = existing.reason === "npi"
+      ? "An organization with this NPI already exists: " + existing.record.legal_name + ". Use the existing record."
+      : "An organization with this legal name already exists: " + existing.record.legal_name + ". Use the existing record.";
+    return { status: "error", message, recordId: existing.record.id };
+  }
+
+  const { data, error } = await supabase.from("organizations").insert({
     tenant_id: tenantId,
-    client_id: value(formData, "client_id") || null,
+    client_id: clientId || null,
     legal_name: legalName,
     dba_name: value(formData, "dba_name") || null,
     organization_type: value(formData, "organization_type") || null,
     entity_npi: npi || null,
     created_by: user.id,
     updated_by: user.id,
-  });
+  }).select("id").single();
 
-  if (error) throw new Error(error.message);
+  if (error || !data) return { status: "error", message: "Organization could not be created. Check permissions or refresh." };
   revalidatePath("/organizations");
+  if (clientId) revalidatePath("/clients/" + clientId);
+  return { status: "success", message: "Organization created successfully.", recordId: data.id };
 }
 
 export async function createLocationRecord(formData: FormData) {
@@ -226,6 +327,8 @@ export async function createCredentialingProject(formData: FormData) {
     } else if (assignedClientIds.length > 1) {
       throw new Error("The selected provider and organization belong to different clients. Select the intended client explicitly.");
     } else if (newClientName) {
+      const existingClient = matchingClient(await activeClients(supabase, tenantId), newClientName);
+      if (existingClient) throw new Error("Client already exists: " + existingClient.name + ". Select it from Existing client instead of creating a new one.");
       const clientType = organizationId ? "group" : "individual";
       const { data: newClient, error } = await supabase
         .from("clients")
