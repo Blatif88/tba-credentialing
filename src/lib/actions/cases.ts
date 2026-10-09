@@ -372,6 +372,33 @@ export async function recordCaseMilestone(formData: FormData) {
 }
 
 
+export async function recordActivationChannel(formData: FormData) {
+  const { supabase } = await context();
+  const caseId = value(formData, "case_id");
+  const channel = value(formData, "channel");
+  const outcome = value(formData, "outcome");
+  const occurredAt = value(formData, "occurred_at");
+
+  if (!caseId || !["era", "eft", "edi"].includes(channel) ||
+      !["completed", "not_applicable"].includes(outcome) || !occurredAt) {
+    throw new Error("Case, activation channel, outcome, and occurrence date/time are required.");
+  }
+
+  const { error } = await supabase.rpc("record_activation_channel", {
+    p_case_id: caseId,
+    p_channel: channel,
+    p_outcome: outcome,
+    p_occurred_at: new Date(occurredAt).toISOString(),
+    p_reference_number: value(formData, "reference_number") || null,
+    p_notes: value(formData, "notes") || null,
+  });
+
+  if (error) throw new Error(error.message);
+  revalidatePath(casePath(caseId));
+  revalidatePath("/enrollment-cases");
+}
+
+
 export async function createCaseDeficiency(formData: FormData) {
   const { supabase } = await context();
   const caseId = value(formData, "case_id");
